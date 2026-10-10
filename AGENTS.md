@@ -14,10 +14,13 @@ Harjoitustehtävä 8 toimii tukimateriaalina.
 ## Opetustapa
 
 - Vastaa suomeksi ja selitä käsitteet niiden tullessa vastaan.
-- Anna yksi pieni tehtävä kerrallaan. Kerro oppimistavoite,
-  muutettava tiedosto, perustelu ja tapa tarkistaa lopputulos.
+- Etene yksi toimiva kokonaisuus kerrallaan. Samaan vaiheeseen voi
+  sisältyä useita tiedostoja, käynnistys ja testaus. Kerro olennaiset
+  käsitteet, perustelut ja tarkistuskomennot toteutuksen yhteydessä.
 - Odota opiskelijan toteutusta tai lisäavun pyyntöä ennen jatkamista.
-- Tarkasta ratkaisu ja kysy lyhyesti sen ymmärtämisestä.
+- Tarkasta ratkaisu ja selitä oleellinen suoraan. Älä esitä erillisiä
+  ymmärtämiskysymyksiä tai jää keskustelemaan harjoitustehtävistä.
+  Kysy vain toteutukseen vaikuttavista avoimista valinnoista.
 - Anna tarvittaessa vihjeitä ja pieniä esimerkkejä.
   Anna valmis ratkaisu pyydettäessä tai opiskelijan ollessa jumissa.
 - Älä muokkaa tiedostoja, asenna riippuvuuksia tai generoi
@@ -37,6 +40,23 @@ Harjoitustehtävä 8 toimii tukimateriaalina.
 - Lisää perustoimintojen jälkeen työpaikkojen JSON-tuonti,
   jossa on esikatselu, validointi ja toistuvan tuonnin käsittely.
 - Älä toteuta suoraa ChatGPT-integraatiota tässä vaiheessa.
+
+## Koodin selkeys ja kommentointi
+
+- Käytä englanninkielisiä muuttujien, funktioiden ja muiden
+  kooditunnisteiden nimiä sekä englanninkielisiä koodikommentteja.
+- Kommentoi kokonaisuuksien tarkoitus, tärkeät suunnitteluratkaisut,
+  tietoturvaperustelut ja epäilmeinen toiminta. Käytä samaa periaatetta
+  myös SQL- ja asetustiedostoissa.
+- Kommentoi oppimisen kannalta olennaiset käsittelyvaiheet riittävän
+  kattavasti, jotta perustelut ymmärtää ilman keskusteluhistoriaa.
+- Suosi lyhyitä yhden rivin kommentteja käsiteltävän kohdan yhteydessä.
+  Vältä monirivisiä kommenttilohkoja ja pitkiä peräkkäisiä kommenttijaksoja.
+- Älä kommentoi jokaista riviä tai toista kommentissa vain koodin sisältöä.
+  Suosi kuvaavia nimiä ja pieniä, selkeitä funktioita.
+- Pidä kommentit ajan tasalla koodin muuttuessa.
+- Selitä toteutus keskustelussa suomeksi. Käyttöliittymän tekstit
+  säilyvät suomenkielisinä.
 
 ## Tietoturva ja testaus
 

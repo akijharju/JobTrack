@@ -1,0 +1,30 @@
+# Run only MariaDB in Docker while the backend runs locally during development.
+services:
+  db:
+    # Required substitutions stop configuration if an environment value is empty or missing.
+    image: mariadb:${MARIADB_VERSION:?Aseta MARIADB_VERSION}
+    # These initialization values apply only when the database volume is empty.
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Aseta DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_NAME:?Aseta DB_NAME}
+      # Grant the application account access to its database rather than using root.
+      MARIADB_USER: ${DB_USER:?Aseta DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?Aseta DB_PASSWORD}
+    # Keep DB_HOST at 127.0.0.1 to restrict access to the development machine.
+    ports:
+      # Map the configurable host port to MariaDB's fixed internal port.
+      - "${DB_HOST:?Aseta DB_HOST}:${DB_PORT:?Aseta DB_PORT}:3306"
+    # Preserve database files when the container is recreated.
+    volumes:
+      - dbdata:/var/lib/mysql
+    # A running container may still be initializing its database.
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      # Allow initialization time before failed checks count toward the retry limit.
+      start_period: 30s
+
+volumes:
+  dbdata:

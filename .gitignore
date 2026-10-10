@@ -1,5 +1,7 @@
+# Dependencies and build output can be recreated from the project sources.
 node_modules/
 dist/
+# Keep local secrets out of Git, but track the template without secrets.
 .env
 .env.*
 !.env.example
