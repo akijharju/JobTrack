@@ -4,7 +4,8 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "node --test",
+    "test": "node --test test/*.test.js",
+    "test:integration": "node --env-file=../.env.test --test test/*.integration.js",
     "start": "node --env-file=../.env server.js",
     "dev": "node --env-file=../.env --watch server.js",
     "db:check": "node --env-file=../.env check-db.js"

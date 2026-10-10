@@ -56,7 +56,9 @@ Rekisteröityminen on toteutettu. Backend validoi syötteen, normalisoi käyttä
 
 Kirjautuminen ja suojattu omien käyttäjätietojen haku on toteutettu. `backend/auth.js` luo JWT-tokenit ja sisältää `requireAuth`-middlewaren, joka tarkistaa tokenin ennen suojatun reitin käsittelyä. Autentikointilogiikalle ja `requireAuth`-middlewarelle on toteutettu automaattiset testit tiedostoon `backend/test/auth.test.js`, jotka ajetaan Node.js:n sisäänrakennetulla test runnerilla.
 
-Expressin health-reitti ei tarkista tietokantaa. Frontend, työpaikkojen käsittely sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
+Rekisteröitymisen, kirjautumisen ja omien tietojen haun yhteistoimintaa testataan myös oikealla MariaDB-yhteydellä. Integraatiotesti käyttää erillistä testikonttia, jonka asetukset ovat tiedostossa `docker-compose.test.yml`.
+
+Frontend, työpaikkojen käsittely sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
 
 ## REST API
 
@@ -196,7 +198,9 @@ Aja testit `backend/`-hakemistossa:
 npm test
 ```
 
-Komento suorittaa skriptin `node --test`. Testit käynnistävät erillisen Express-testipalvelimen satunnaiseen vapaaseen porttiin ja käyttävät testikohtaista satunnaista JWT-avainta, joten ne ovat riippumattomia tietokannasta ja paikallisesta `.env`-tiedostosta.
+Komento suorittaa skriptin `node --test test/*.test.js`. Testit käynnistävät erillisen Express-testipalvelimen satunnaiseen vapaaseen porttiin ja käyttävät testiajoa varten luotua satunnaista JWT-avainta, joten ne ovat riippumattomia tietokannasta ja paikallisesta `.env`-tiedostosta. Tietokantaa käyttävät integraatiotestit ajetaan omalla komennollaan.
+
+Opiskelijan paikallisessa testiajossa 10.10.2026 kaikki yhdeksän testiä läpäistiin (9 läpäistyä, 0 epäonnistunutta).
 
 Testisarja kattaa seuraavat tapaukset:
 
@@ -212,4 +216,43 @@ Testisarja kattaa seuraavat tapaukset:
 | Token ilman vanhenemisaikaa | Hylätään (`401 Unauthorized`) |
 | Token, jossa virheellinen käyttäjä-id (ei numero) | Hylätään (`401 Unauthorized`) |
 
-Tietokantaa käyttävät rekisteröitymisen ja kirjautumisen reittitestit sekä frontendin testit toteutetaan myöhemmässä vaiheessa.
+### Autentikoinnin integraatiotesti
+
+Tiedosto `backend/test/authRoutes.integration.js` testaa oikean Express-sovelluksen ja MariaDB:n yhteistoimintaa. Testi käy läpi yhden käyttäjän rekisteröitymisen, kirjautumisen ja omien tietojen haun sekä niihin liittyviä virhetilanteita.
+
+Kopioi ensimmäisellä käyttökerralla repon juuren `.env.test.example` tiedostoksi `.env.test`. Luo siihen erilliset satunnaiset arvot kenttiin `DB_ROOT_PASSWORD`, `DB_PASSWORD` ja `JWT_SECRET`. JWT-avain on 32 satunnaista tavua 64 heksadesimaalimerkkinä. Säilytä olemassa olevan `.env.test`-tiedoston arvot. Paikallinen tiedosto on suljettu pois Gitistä, mutta salaisuuksia sisältämätön esimerkkitiedosto kuuluu versionhallintaan.
+
+Testiasetuksissa `NODE_ENV=test`, `DB_NAME=jobtrack_test` ja `DB_USER=jobtrack_test`. Testikanta käyttää osoitetta `127.0.0.1:3307`, kun kehityskanta käyttää porttia 3306. Testi tarkistaa ympäristöasetukset ennen sovelluksen lataamista ja tietokannan nimen ennen testidatan kirjoittamista.
+
+Käynnistä testitietokanta repon juuressa:
+
+```sh
+docker compose --env-file .env.test -f docker-compose.test.yml config --quiet
+docker compose --env-file .env.test -f docker-compose.test.yml up -d --wait
+```
+
+Compose-projektin nimi on `jobtrack-tests`. Testikontti luo taulut tiedostosta `backend/schema.sql` alustuksen yhteydessä. Tietokannan tiedostot ovat väliaikaisessa `tmpfs`-liitoksessa, joten testidata häviää kontin pysähtyessä. Kehitystietokannan `dbdata`-volumea ei käytetä.
+
+Aja yhteyden tarkistus ja integraatiotesti repon juuresta:
+
+```sh
+cd backend
+node --env-file=../.env.test check-db.js
+npm run test:integration
+```
+
+Testikontin on oltava käynnissä. Erillistä `npm run dev` -palvelinta ei tarvita, sillä testi käynnistää sovelluksen vapaaseen paikalliseen porttiin. Testi luo satunnaisen käyttäjätunnuksen ja poistaa lopuksi vain kyseisen tunnuksen sekä sulkee palvelimen ja tietokantayhteyspoolin.
+
+| Tarkistus | Odotettu tulos |
+| --- | --- |
+| Rekisteröityminen | `201`, positiivinen kokonaisluku-id ja normalisoitu käyttäjätunnus ilman salasanakenttiä |
+| Tallennettu salasana | Tietokannassa on alkuperäisestä salasanasta poikkeava tiiviste, jonka bcrypt-vertailu onnistuu |
+| Saman tunnuksen rekisteröinti uudelleen | `409` |
+| Kirjautuminen | `200`, token ja käyttäjän julkiset tiedot; tunnus normalisoidaan kuten rekisteröitymisessä |
+| Omien tietojen haku tokenilla | `200`, rekisteröidyn käyttäjän julkiset tiedot |
+| Omien tietojen haku ilman tokenia | `401` |
+| Väärä salasana ja tuntematon käyttäjä | Molemmista `401` ja sama virheviesti |
+
+Opiskelijan paikallisissa testiajoissa 10.10.2026 kaikki yhdeksän JWT-testiä ja yksi integraatiotesti läpäistiin, eikä epäonnistuneita testejä ollut. Integraatiotesti sisältää useita tarkistuksia, mutta testityökalu laskee sen yhdeksi testiksi.
+
+Syötteiden puuttuvien kenttien ja pituusrajojen automaattiset testit, työpaikkojen käyttäjäkohtaisen eristämisen testit sekä frontendin testit toteutetaan myöhemmin.

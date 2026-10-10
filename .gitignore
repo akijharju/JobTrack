@@ -5,3 +5,5 @@ dist/
 .env
 .env.*
 !.env.example
+# Track the test template without local secrets.
+!.env.test.example

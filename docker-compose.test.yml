@@ -1,0 +1,33 @@
+# Keep test containers separate from the development project.
+name: jobtrack-tests
+
+services:
+  db-test:
+    image: mariadb:${MARIADB_VERSION:?Aseta MARIADB_VERSION}
+
+    # Read database settings from the selected environment file.
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Aseta DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_NAME:?Aseta DB_NAME}
+      MARIADB_USER: ${DB_USER:?Aseta DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?Aseta DB_PASSWORD}
+
+    # Keep DB_HOST at 127.0.0.1 for local access only.
+    ports:
+      - "${DB_HOST:?Aseta DB_HOST}:${DB_PORT:?Aseta DB_PORT}:3306"
+
+    # Test data is temporary and is lost when the container stops.
+    tmpfs:
+      - /var/lib/mysql
+
+    # Create the same tables that the application uses.
+    volumes:
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+
+    # Wait until MariaDB can accept database connections.
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
