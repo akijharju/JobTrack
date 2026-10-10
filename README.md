@@ -54,7 +54,7 @@ Kehityksen MariaDB-palvelu toimii Dockerissa, ja sen asetukset ovat tiedostossa 
 
 Rekisteröityminen on toteutettu. Backend validoi syötteen, normalisoi käyttäjätunnuksen pieniksi kirjaimiksi ja poistaa sen reunoilta välilyönnit. Salasana tallennetaan bcrypt-tiivisteenä, ja tietokantaan kirjoitetaan parametrisoidulla kyselyllä. Vastaukseen palautetaan vain käyttäjän tunniste ja käyttäjätunnus.
 
-Kirjautuminen ja suojattu omien käyttäjätietojen haku on toteutettu. `backend/auth.js` luo JWT-tokenit ja sisältää `requireAuth`-middlewaren, joka tarkistaa tokenin ennen suojatun reitin käsittelyä.
+Kirjautuminen ja suojattu omien käyttäjätietojen haku on toteutettu. `backend/auth.js` luo JWT-tokenit ja sisältää `requireAuth`-middlewaren, joka tarkistaa tokenin ennen suojatun reitin käsittelyä. Autentikointilogiikalle ja `requireAuth`-middlewarelle on toteutettu automaattiset testit tiedostoon `backend/test/auth.test.js`, jotka ajetaan Node.js:n sisäänrakennetulla test runnerilla.
 
 Expressin health-reitti ei tarkista tietokantaa. Frontend, työpaikkojen käsittely sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
 
@@ -186,6 +186,30 @@ Seuraavat paikallisen kehitysympäristön testit ovat onnistuneet:
 | Kirjautuminen tuntemattomalla käyttäjätunnuksella | `401`, sama vastaus kuin väärällä salasanalla |
 | `/api/auth/me` virheellisellä tokenilla | `401`, viesti `Istunto on virheellinen tai vanhentunut.` |
 
-Vanhentuneen tokenin hylkäämistä ei ole vielä varmennettu testillä.
+### Automaattiset autentikointitestit
 
-Varsinaista automaattista sovellustestisarjaa ei ole vielä toteutettu. `db:check` on erillinen yhteyden ja taulujen saatavuuden tarkistus. `package.json`-tiedoston `test`-komento on npm:n luoma oletus, joka päättyy virheeseen eikä suorita sovellustestejä.
+Autentikointimoduulin (`backend/auth.js`) ja `requireAuth`-middlewaren toiminta varmistetaan automaattisilla testeillä tiedostossa `backend/test/auth.test.js`. Testit käyttävät Node.js:n sisäänrakennettua testityökalua (`node:test` ja `node:assert/strict`), joten erillisiä ulkoisia testikirjastoja ei tarvita.
+
+Aja testit `backend/`-hakemistossa:
+
+```sh
+npm test
+```
+
+Komento suorittaa skriptin `node --test`. Testit käynnistävät erillisen Express-testipalvelimen satunnaiseen vapaaseen porttiin ja käyttävät testikohtaista satunnaista JWT-avainta, joten ne ovat riippumattomia tietokannasta ja paikallisesta `.env`-tiedostosta.
+
+Testisarja kattaa seuraavat tapaukset:
+
+| Testitapaus | Varmistettava asia |
+| --- | --- |
+| Tokenin luonti (`createToken`) | Token sisältää käyttäjätunnisteen (`sub`), voimassaoloajan (`exp`), myöntämisajan (`iat`) ja HS256-algoritmin eikä ylimääräisiä kenttiä |
+| Kelvollinen token | Päästää suojatulle reitille (`200 OK`) ja asettaa tarkistetun käyttäjän tunnisteen arvoon `req.user` |
+| Puuttuva token | Estää pääsyn (`401 Unauthorized`, viesti `Kirjautuminen vaaditaan.`) |
+| Rikkinäinen / virheellinen token | Hylätään (`401 Unauthorized`) |
+| Vanhentunut token | Hylätään automaattisesti (`401 Unauthorized`) |
+| Väärällä avaimella allekirjoitettu token | Hylätään allekirjoitusvirheenä (`401 Unauthorized`) |
+| Väärällä algoritmilla luotu token | Hylätään algoritmitarkistuksessa (`401 Unauthorized`) |
+| Token ilman vanhenemisaikaa | Hylätään (`401 Unauthorized`) |
+| Token, jossa virheellinen käyttäjä-id (ei numero) | Hylätään (`401 Unauthorized`) |
+
+Tietokantaa käyttävät rekisteröitymisen ja kirjautumisen reittitestit sekä frontendin testit toteutetaan myöhemmässä vaiheessa.
