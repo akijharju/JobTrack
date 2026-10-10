@@ -58,7 +58,7 @@ Kirjautuminen ja suojattu omien käyttäjätietojen haku on toteutettu. `backend
 
 Rekisteröitymisen, kirjautumisen ja omien tietojen haun yhteistoimintaa testataan myös oikealla MariaDB-yhteydellä. Integraatiotesti käyttää erillistä testikonttia, jonka asetukset ovat tiedostossa `docker-compose.test.yml`.
 
-Työpaikan lisääminen ja omien työpaikkojen listaaminen on toteutettu tiedostossa `backend/routes/jobRoutes.js`. Rajapinta käsittelee tässä vaiheessa yrityksen ja tehtävänimikkeen. Kahden käyttäjän integraatiotesti varmistaa, että kumpikin näkee vain omat työpaikkansa.
+Työpaikan lisääminen ja omien työpaikkojen listaaminen on toteutettu tiedostossa `backend/routes/jobRoutes.js`. Rajapinta käsittelee yrityksen, tehtävänimikkeen, hakemuksen tilan, prioriteetin ja sopivuusluokan. Kahden käyttäjän integraatiotesti varmistaa tallennetut valinnat, oletusarvot ja sen, että kumpikin näkee vain omat työpaikkansa.
 
 Frontend, työpaikkojen muiden kenttien käsittely, yksittäisen työpaikan haku, muokkaaminen ja poistaminen sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
 
@@ -94,19 +94,34 @@ Molemmat reitit edellyttävät otsaketta `Authorization: Bearer <token>`.
 
 | Metodi ja polku | Toiminta | Onnistunut vastaus |
 | --- | --- | --- |
-| `POST /api/jobs` | Lisää työpaikan kirjautuneelle käyttäjälle | `201`, olio kentillä `id`, `company` ja `title` |
-| `GET /api/jobs` | Listaa kirjautuneen käyttäjän työpaikat uusimman id:n mukaan ensin | `200`, taulukko olioita kentillä `id`, `company` ja `title` |
+| `POST /api/jobs` | Lisää työpaikan kirjautuneelle käyttäjälle | `201`, tallennettu työpaikka oliona |
+| `GET /api/jobs` | Listaa kirjautuneen käyttäjän työpaikat uusimman id:n mukaan ensin | `200`, taulukko työpaikkaolioita |
+
+Molemmat reitit palauttavat työpaikan kentät `id`, `company`, `title`, `status`, `priority` ja `match_level`. Listan järjestäminen prioriteetin mukaan toteutetaan myöhemmin.
 
 Lisäyspyynnön esimerkki:
 
 ```json
 {
   "company": "Esimerkki Oy",
-  "title": "Ohjelmistokehittäjä"
+  "title": "Ohjelmistokehittäjä",
+  "status": "applied",
+  "priority": "high",
+  "match_level": "stretch"
 }
 ```
 
-Molemmat kentät ovat pakollisia merkkijonoja. Niiden reunoilta poistetaan välilyönnit, minkä jälkeen pituuden on oltava 1–100 Unicode-koodipistettä. Kirjainkoko säilytetään. Muut kentät, myös asiakkaan lähettämä `user_id`, hylätään `400`-vastauksella. Tietokannan muut sarakkeet saavat nykyiset oletusarvonsa, eikä niitä vielä palauteta rajapinnasta.
+Kentät `company` ja `title` ovat pakollisia merkkijonoja. Niiden reunoilta poistetaan välilyönnit, minkä jälkeen pituuden on oltava 1–100 Unicode-koodipistettä. Kirjainkoko säilytetään.
+
+| Valinnainen kenttä | Sallitut arvot | Oletusarvo kentän puuttuessa |
+| --- | --- | --- |
+| `status` | `interested`, `applied`, `interview`, `offer`, `rejected` | `interested` |
+| `priority` | `high`, `normal`, `low` | `normal` |
+| `match_level` | `strong`, `partial`, `stretch` tai JSON-arvo `null` | `null` |
+
+Oletusarvo asetetaan vain puuttuvalle kentälle. Kentät `status` ja `priority` eivät hyväksy arvoa `null`. Sopivuusluokan `null` tarkoittaa, ettei sopivuutta ole arvioitu. Valintojen merkkijonoarvot hyväksytään täsmälleen taulukon muodossa. Virheelliset arvot hylätään `400`-vastauksella ennen tietokantaan kirjoittamista.
+
+Muut kentät, myös asiakkaan lähettämä `user_id`, hylätään `400`-vastauksella. Sijaintia, URL-osoitetta, hakuaikaa ja muistiinpanoja ei vielä käsitellä rajapinnassa.
 
 Työpaikan omistaja otetaan aina tarkistetusta tokenista. Listauksen parametrisoitu SQL-kysely rajaa rivit ehdolla `WHERE user_id = ?`. Käyttäjä, jolla ei ole työpaikkoja, saa vastaukseksi tyhjän taulukon `[]`.
 
@@ -290,8 +305,12 @@ Tiedosto `backend/test/jobs.integration.js` ajetaan samalla `npm run test:integr
 | Virheelliset pyynnön rakenteet, puuttuvat kentät ja numeerinen yrityksen nimi | `400` |
 | Tyhjä tai yli 100 merkin yritys tai tehtävänimike | `400` |
 | Toisen käyttäjän `user_id` lisäyspyynnössä | `400` |
+| Tuntemattomat tai numeeriset tila-, prioriteetti- ja sopivuusluokka-arvot | `400` |
+| Tilan tai prioriteetin `null` sekä sopivuusluokan tyhjä merkkijono | `400` |
 | Työpaikan lisääminen molemmille käyttäjille | `201`, erilliset positiiviset kokonaisluku-id:t ja tallennetut kentät |
 | Yrityksen ja tehtävänimikkeen reunoilla olevat välilyönnit | Poistetaan ennen tallennusta |
+| Valinnat `applied`, `high` ja `stretch` | Palautuvat sekä lisäysvastauksessa että tietokannasta luetussa listauksessa |
+| Tilan, prioriteetin ja sopivuusluokan jättäminen pois pyynnöstä | Molemmissa vastauksissa oletusarvot `interested`, `normal` ja `null` |
 | Käyttäjäkohtainen listaus | Kummankin listalla on täsmälleen oma työpaikka eikä hylättyjä lisäyksiä |
 
 Testi käyttää satunnaisia käyttäjätunnuksia. Siivouksessa poistetaan vain testin omat työpaikat ja käyttäjät. Työpaikat poistetaan ennen käyttäjiä tietokannan viiteavaimen vuoksi.

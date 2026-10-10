@@ -137,17 +137,31 @@ test('job creation validates input and keeps user records separate', async () =>
   assert.equal(emptyList.status, 200);
   assert.deepEqual(emptyList.body, []);
 
-  // Reject invalid values before they can create database records.
+  const validBody = {
+    company: 'Testiyritys',
+    title: 'Kehittäjä',
+  };
+
+  // Change one field at a time so each case checks a specific validation rule.
   const invalidBodies = [
     null,
     [],
     {},
-    { company: 123, title: 'Kehittäjä' },
-    { company: '   ', title: 'Kehittäjä' },
-    { company: 'Testiyritys', title: '   ' },
-    { company: 'a'.repeat(101), title: 'Kehittäjä' },
-    { company: 'Testiyritys', title: 'a'.repeat(101) },
-    { company: 'Testiyritys', title: 'Kehittäjä', user_id: users[1].id },
+    { ...validBody, company: 123 },
+    { ...validBody, company: '   ' },
+    { ...validBody, title: '   ' },
+    { ...validBody, company: 'a'.repeat(101) },
+    { ...validBody, title: 'a'.repeat(101) },
+    { ...validBody, user_id: users[1].id },
+    { ...validBody, status: 'unknown' },
+    { ...validBody, status: null },
+    { ...validBody, status: 123 },
+    { ...validBody, priority: 'urgent' },
+    { ...validBody, priority: null },
+    { ...validBody, priority: 123 },
+    { ...validBody, match_level: 'perfect' },
+    { ...validBody, match_level: '' },
+    { ...validBody, match_level: 123 },
   ];
 
   for (const body of invalidBodies) {
@@ -161,17 +175,27 @@ test('job creation validates input and keeps user records separate', async () =>
     assert.equal(typeof response.body.error, 'string');
   }
 
-  // Save a job for each owner and verify trimming in the returned data.
+  // Save explicit choices for user A, including high priority for a stretch role.
   const jobA = await request('/api/jobs', {
     method: 'POST',
     token: tokenA,
-    body: { company: '  Yritys A  ', title: '  Kehittäjä  ' },
+    body: {
+      company: '  Yritys A  ',
+      title: '  Kehittäjä  ',
+      status: 'applied',
+      priority: 'high',
+      match_level: 'stretch',
+    },
   });
 
+  // Omit optional fields for user B to verify the default values.
   const jobB = await request('/api/jobs', {
     method: 'POST',
     token: tokenB,
-    body: { company: 'Yritys B', title: 'Testaaja' },
+    body: {
+      company: 'Yritys B',
+      title: 'Testaaja',
+    },
   });
 
   assert.equal(jobA.status, 201);
@@ -180,19 +204,27 @@ test('job creation validates input and keeps user records separate', async () =>
   assert.ok(Number.isSafeInteger(jobB.body.id) && jobB.body.id > 0);
   assert.notEqual(jobA.body.id, jobB.body.id);
 
+  // Check trimming and confirm that each explicit choice is returned unchanged.
   assert.deepEqual(jobA.body, {
     id: jobA.body.id,
     company: 'Yritys A',
     title: 'Kehittäjä',
+    status: 'applied',
+    priority: 'high',
+    match_level: 'stretch',
   });
 
+  // Defaults must be visible in the response, not just stored in the database.
   assert.deepEqual(jobB.body, {
     id: jobB.body.id,
     company: 'Yritys B',
     title: 'Testaaja',
+    status: 'interested',
+    priority: 'normal',
+    match_level: null,
   });
 
-  // Each list must contain exactly its owner's job and no rejected records.
+  // Read the records again to verify storage and user-specific filtering.
   const listA = await request('/api/jobs', { token: tokenA });
   const listB = await request('/api/jobs', { token: tokenB });
 
