@@ -1,11 +1,12 @@
 const pool = require('./db');
 
+// Run a read-only diagnostic independently of the HTTP server.
 async function checkDatabase() {
   try {
     // Verify connectivity without reading application data.
     await pool.execute('SELECT 1');
 
-    // Verify that both tables exist and the application user can read them.
+    // LIMIT 0 checks table access without fetching records or verifying all constraints.
     await pool.execute('SELECT id FROM users LIMIT 0');
     await pool.execute('SELECT id FROM jobs LIMIT 0');
 
@@ -22,5 +23,6 @@ checkDatabase().catch((error) => {
     'Tietokannan tarkistus epäonnistui:',
     error.code || 'UNKNOWN_ERROR'
   );
+  // Report failure to npm and scripts without forcing immediate process termination.
   process.exitCode = 1;
 });
