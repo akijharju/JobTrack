@@ -439,4 +439,139 @@ test('job CRUD validates input and keeps user records separate', async () => {
 
   assert.equal(otherJob.status, 200);
   assert.deepEqual(otherJob.body, jobB.body);
+
+  const offerJobs = [];
+
+  // Create records in a mixed order so priority sorting cannot pass by accident.
+  for (const priority of ['high', 'low', 'normal', 'high']) {
+    const response = await request('/api/jobs', {
+      method: 'POST',
+      token: tokenA,
+      body: {
+        company: 'Järjestystesti Oy',
+        title: `Tehtävä ${offerJobs.length + 1}`,
+        status: 'offer',
+        priority,
+      },
+    });
+
+    assert.equal(response.status, 201);
+    offerJobs.push(response.body);
+  }
+
+  // Give user B a matching record to test ownership together with filtering.
+  const otherOffer = await request('/api/jobs', {
+    method: 'POST',
+    token: tokenB,
+    body: {
+      company: 'Toisen käyttäjän yritys',
+      title: 'Oma tehtävä',
+      status: 'offer',
+      priority: 'high',
+    },
+  });
+
+  assert.equal(otherOffer.status, 201);
+
+  // New records must appear before the owner's older records.
+  const newestOfferIds = [...offerJobs].reverse().map((job) => job.id);
+  const olderIds = remainingJobs.body.map((job) => job.id);
+  const expectedNewestIds = [...newestOfferIds, ...olderIds];
+
+  // The default order and the explicit newest option must produce the same list.
+  for (const path of ['/api/jobs', '/api/jobs?sort=newest']) {
+    const response = await request(path, { token: tokenA });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(
+      response.body.map((job) => job.id),
+      expectedNewestIds
+    );
+  }
+
+  // A status filter must exclude both other statuses and the other user's offer.
+  const offers = await request('/api/jobs?status=offer', {
+    token: tokenA,
+  });
+
+  assert.equal(offers.status, 200);
+  assert.deepEqual(
+    offers.body.map((job) => job.id),
+    newestOfferIds
+  );
+
+  // High priorities come first, with the newer high-priority record before the older one.
+  const expectedOfferPriorityIds = [
+    offerJobs[3].id,
+    offerJobs[0].id,
+    offerJobs[2].id,
+    offerJobs[1].id,
+  ];
+
+  const sortedOffers = await request(
+    '/api/jobs?status=offer&sort=priority',
+    { token: tokenA }
+  );
+
+  assert.equal(sortedOffers.status, 200);
+  assert.deepEqual(
+    sortedOffers.body.map((job) => job.id),
+    expectedOfferPriorityIds
+  );
+
+  // Earlier test records have normal priority and are older than these offers.
+  const allByPriority = await request('/api/jobs?sort=priority', {
+    token: tokenA,
+  });
+
+  assert.equal(allByPriority.status, 200);
+  assert.deepEqual(
+    allByPriority.body.map((job) => job.id),
+    [
+      offerJobs[3].id,
+      offerJobs[0].id,
+      offerJobs[2].id,
+      ...olderIds,
+      offerJobs[1].id,
+    ]
+  );
+
+  // A valid filter with no matching records must return an empty array.
+  const rejectedJobs = await request('/api/jobs?status=rejected', {
+    token: tokenA,
+  });
+
+  assert.equal(rejectedJobs.status, 200);
+  assert.deepEqual(rejectedJobs.body, []);
+
+  // The same filter must show user B only their own matching record.
+  const otherOffers = await request(
+    '/api/jobs?status=offer&sort=priority',
+    { token: tokenB }
+  );
+
+  assert.equal(otherOffers.status, 200);
+  assert.deepEqual(otherOffers.body, [otherOffer.body]);
+
+  // Reject unknown, empty and repeated query options instead of guessing intent.
+  const invalidQueries = [
+    'status=unknown',
+    'status=',
+    'sort=unknown',
+    'sort=',
+    'status=offer&status=interested',
+    'sort=priority&sort=newest',
+    'status[]=offer',
+    `user_id=${users[1].id}`,
+  ];
+
+  for (const query of invalidQueries) {
+    const response = await request(`/api/jobs?${query}`, {
+      token: tokenA,
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(typeof response.body.error, 'string');
+  }
+
 });

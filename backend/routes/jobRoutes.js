@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const { requireAuth } = require('../auth');
-const { validateJob } = require('../jobValidation');
+const { validateJob, validateJobQuery } = require('../jobValidation');
 
 const router = express.Router();
 
@@ -45,19 +45,47 @@ async function findOwnJob(jobId, userId) {
 }
 
 router.get('/', async (req, res) => {
-  // Format the deadline as plain text so no timezone conversion changes it.
+  const validation = validateJobQuery(req.query);
+
+  // Reject invalid query options before sending anything to the database.
+  if (validation.error) {
+    return res.status(400).json({ error: validation.error });
+  }
+
+  const { status, sort } = validation.value;
+
+  // Ownership is always required, even when no status filter is selected.
+  const parameters = [req.user.id];
+  let statusFilter = '';
+
+  if (status !== null) {
+    // Bind the status as a value instead of inserting client text into SQL.
+    statusFilter = ' AND status = ?';
+    parameters.push(status);
+  }
+
+  // Choose SQL only from fixed strings written here, never from user input.
+  const orderBy = sort === 'priority'
+    ? `CASE priority
+         WHEN 'high' THEN 1
+         WHEN 'normal' THEN 2
+         WHEN 'low' THEN 3
+         ELSE 4
+       END ASC, id DESC`
+    : 'id DESC';
+
+  // Apply ownership, filtering and ordering before returning the records.
   const [jobs] = await pool.execute(
     `SELECT id, company, title, status, priority, match_level,
             location, url,
             DATE_FORMAT(deadline, '%Y-%m-%d') AS deadline,
             notes
      FROM jobs
-     WHERE user_id = ?
-     ORDER BY id DESC`,
-    [req.user.id]
+     WHERE user_id = ?${statusFilter}
+     ORDER BY ${orderBy}`,
+    parameters
   );
 
-  // The owner filter ensures that only this user's records are returned.
   res.json(jobs);
 });
 

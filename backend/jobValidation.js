@@ -169,4 +169,39 @@ function validateJob(body) {
   };
 }
 
-module.exports = { validateJob };
+function validateJobQuery(query) {
+  // Reject unsupported parameters so typing mistakes do not silently change results.
+  const allowedFields = ['status', 'sort'];
+
+  if (Object.keys(query).some((field) => !allowedFields.includes(field))) {
+    return { error: 'Sallitut kyselyparametrit ovat status ja sort.' };
+  }
+
+  const { status, sort = 'newest' } = query;
+
+  // Repeated parameters may become arrays; accept only one valid status string.
+  if (
+    status !== undefined &&
+    (typeof status !== 'string' || !allowedStatuses.includes(status))
+  ) {
+    return {
+      error:
+        'Tilasuodattimen tulee olla interested, applied, interview, offer tai rejected.',
+    };
+  }
+
+  // Accept named sort options instead of SQL expressions from the client.
+  if (typeof sort !== 'string' || !['newest', 'priority'].includes(sort)) {
+    return { error: 'Järjestyksen tulee olla newest tai priority.' };
+  }
+
+  // Null means that the query should include all application statuses.
+  return {
+    value: {
+      status: status === undefined ? null : status,
+      sort,
+    },
+  };
+}
+
+module.exports = { validateJob, validateJobQuery };
