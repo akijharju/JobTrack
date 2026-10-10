@@ -1,5 +1,6 @@
 const express = require('express');
 const authRoutes = require('./routes/authRoutes');
+const jobRoutes = require('./routes/jobRoutes');
 
 const app = express();
 
@@ -13,6 +14,9 @@ app.get('/api/health', (req, res) => {
 
 // Add the /api/auth prefix to all routes in authRoutes.
 app.use('/api/auth', authRoutes);
+
+// Mount job routes under /api/jobs; the router checks authentication itself.
+app.use('/api/jobs', jobRoutes);
 
 // Handle errors after the routes. Express needs all four parameters.
 app.use((error, req, res, next) => {

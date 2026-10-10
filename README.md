@@ -58,7 +58,9 @@ Kirjautuminen ja suojattu omien käyttäjätietojen haku on toteutettu. `backend
 
 Rekisteröitymisen, kirjautumisen ja omien tietojen haun yhteistoimintaa testataan myös oikealla MariaDB-yhteydellä. Integraatiotesti käyttää erillistä testikonttia, jonka asetukset ovat tiedostossa `docker-compose.test.yml`.
 
-Frontend, työpaikkojen käsittely sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
+Työpaikan lisääminen ja omien työpaikkojen listaaminen on toteutettu tiedostossa `backend/routes/jobRoutes.js`. Rajapinta käsittelee tässä vaiheessa yrityksen ja tehtävänimikkeen. Kahden käyttäjän integraatiotesti varmistaa, että kumpikin näkee vain omat työpaikkansa.
+
+Frontend, työpaikkojen muiden kenttien käsittely, yksittäisen työpaikan haku, muokkaaminen ja poistaminen sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
 
 ## REST API
 
@@ -84,7 +86,31 @@ Väärä salasana ja tuntematon käyttäjätunnus palauttavat saman `401`-virhee
 
 `GET /api/auth/me` edellyttää otsaketta `Authorization: Bearer <token>`. Kelvollisella tokenilla se palauttaa `200` ja käyttäjän `id`- ja `username`-kentät. Puuttuva tai virheellinen token sekä poistettu käyttäjätili johtavat `401`-vastaukseen.
 
-Token allekirjoitetaan HS256-algoritmilla, ja tarkistuksessa hyväksytään vain sama algoritmi. Token sisältää käyttäjätunnisteen `sub`-kentässä sekä myöntämis- ja vanhenemisajan. Tokenin sisältö ei ole salattu. `requireAuth` asettaa tarkistetun käyttäjätunnisteen arvoon `req.user.id`. Työpaikkareittien käyttäjäkohtaiset omistajuustarkistukset toteutetaan myöhemmin erikseen.
+Token allekirjoitetaan HS256-algoritmilla, ja tarkistuksessa hyväksytään vain sama algoritmi. Token sisältää käyttäjätunnisteen `sub`-kentässä sekä myöntämis- ja vanhenemisajan. Tokenin sisältö ei ole salattu. `requireAuth` asettaa tarkistetun käyttäjätunnisteen arvoon `req.user.id`. Työpaikan lisääminen käyttää tätä tunnistetta omistajana, ja listaus rajataan siihen SQL-kyselyssä.
+
+### Työpaikan lisääminen ja omien työpaikkojen listaus
+
+Molemmat reitit edellyttävät otsaketta `Authorization: Bearer <token>`.
+
+| Metodi ja polku | Toiminta | Onnistunut vastaus |
+| --- | --- | --- |
+| `POST /api/jobs` | Lisää työpaikan kirjautuneelle käyttäjälle | `201`, olio kentillä `id`, `company` ja `title` |
+| `GET /api/jobs` | Listaa kirjautuneen käyttäjän työpaikat uusimman id:n mukaan ensin | `200`, taulukko olioita kentillä `id`, `company` ja `title` |
+
+Lisäyspyynnön esimerkki:
+
+```json
+{
+  "company": "Esimerkki Oy",
+  "title": "Ohjelmistokehittäjä"
+}
+```
+
+Molemmat kentät ovat pakollisia merkkijonoja. Niiden reunoilta poistetaan välilyönnit, minkä jälkeen pituuden on oltava 1–100 Unicode-koodipistettä. Kirjainkoko säilytetään. Muut kentät, myös asiakkaan lähettämä `user_id`, hylätään `400`-vastauksella. Tietokannan muut sarakkeet saavat nykyiset oletusarvonsa, eikä niitä vielä palauteta rajapinnasta.
+
+Työpaikan omistaja otetaan aina tarkistetusta tokenista. Listauksen parametrisoitu SQL-kysely rajaa rivit ehdolla `WHERE user_id = ?`. Käyttäjä, jolla ei ole työpaikkoja, saa vastaukseksi tyhjän taulukon `[]`.
+
+Virheellinen lisäyssyöte palauttaa `400`. Puuttuva tai virheellinen token johtaa `401`-vastaukseen. Sovelluksen yhteinen virheenkäsittely palauttaa rikkinäisestä JSON:sta `400`, liian suuresta pyynnöstä `413` ja odottamattomasta palvelinvirheestä `500`.
 
 ## Kehityksen ympäristöasetukset
 
@@ -233,7 +259,7 @@ docker compose --env-file .env.test -f docker-compose.test.yml up -d --wait
 
 Compose-projektin nimi on `jobtrack-tests`. Testikontti luo taulut tiedostosta `backend/schema.sql` alustuksen yhteydessä. Tietokannan tiedostot ovat väliaikaisessa `tmpfs`-liitoksessa, joten testidata häviää kontin pysähtyessä. Kehitystietokannan `dbdata`-volumea ei käytetä.
 
-Aja yhteyden tarkistus ja integraatiotesti repon juuresta:
+Aja yhteyden tarkistus ja integraatiotestit repon juuresta:
 
 ```sh
 cd backend
@@ -253,6 +279,23 @@ Testikontin on oltava käynnissä. Erillistä `npm run dev` -palvelinta ei tarvi
 | Omien tietojen haku ilman tokenia | `401` |
 | Väärä salasana ja tuntematon käyttäjä | Molemmista `401` ja sama virheviesti |
 
-Opiskelijan paikallisissa testiajoissa 10.10.2026 kaikki yhdeksän JWT-testiä ja yksi integraatiotesti läpäistiin, eikä epäonnistuneita testejä ollut. Integraatiotesti sisältää useita tarkistuksia, mutta testityökalu laskee sen yhdeksi testiksi.
+### Työpaikkojen integraatiotesti
 
-Syötteiden puuttuvien kenttien ja pituusrajojen automaattiset testit, työpaikkojen käyttäjäkohtaisen eristämisen testit sekä frontendin testit toteutetaan myöhemmin.
+Tiedosto `backend/test/jobs.integration.js` ajetaan samalla `npm run test:integration` -komennolla ja samalla testitietokannalla kuin autentikoinnin integraatiotesti. Se luo kaksi omaa testikäyttäjää ja tarkistaa työpaikkojen lisäämisen, validoinnin sekä käyttäjien tietojen eristämisen listauksessa.
+
+| Tarkistus | Todettu tulos |
+| --- | --- |
+| Listaus ja lisääminen ilman tokenia | Molemmista `401` |
+| Uuden käyttäjän listaus | `200` ja tyhjä taulukko |
+| Virheelliset pyynnön rakenteet, puuttuvat kentät ja numeerinen yrityksen nimi | `400` |
+| Tyhjä tai yli 100 merkin yritys tai tehtävänimike | `400` |
+| Toisen käyttäjän `user_id` lisäyspyynnössä | `400` |
+| Työpaikan lisääminen molemmille käyttäjille | `201`, erilliset positiiviset kokonaisluku-id:t ja tallennetut kentät |
+| Yrityksen ja tehtävänimikkeen reunoilla olevat välilyönnit | Poistetaan ennen tallennusta |
+| Käyttäjäkohtainen listaus | Kummankin listalla on täsmälleen oma työpaikka eikä hylättyjä lisäyksiä |
+
+Testi käyttää satunnaisia käyttäjätunnuksia. Siivouksessa poistetaan vain testin omat työpaikat ja käyttäjät. Työpaikat poistetaan ennen käyttäjiä tietokannan viiteavaimen vuoksi.
+
+Opiskelijan paikallisissa testiajoissa 10.10.2026 kaikki yhdeksän JWT-testiä ja kaksi integraatiotestiä läpäistiin, eikä epäonnistuneita testejä ollut. Kumpikin integraatiotesti sisältää useita tarkistuksia, mutta testityökalu laskee sen yhdeksi testiksi.
+
+Autentikoinnin puuttuvien kenttien ja salasanan pituusrajojen automaattiset testit sekä frontendin testit toteutetaan myöhemmin. Työpaikkojen testejä laajennetaan muiden kenttien, muokkaamisen ja poistamisen yhteydessä. Nykyinen testi ei vielä tarkista listan järjestystä usealla saman käyttäjän työpaikalla tai täsmälleen 1 ja 100 merkin hyväksyttyjä pituusrajoja.
