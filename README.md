@@ -42,7 +42,7 @@ Tuontiin suunnitellaan esikatselu, tallennettavien työpaikkojen valinta, tietoj
 
 ## Projektin nykytila
 
-Backendin ensimmäinen versio on toteutettu Node.js:llä ja Express 5:llä. `backend/app.js` kokoaa sovelluksen reitit ja virheenkäsittelyn, `backend/routes/authRoutes.js` sisältää rekisteröitymisreitin ja `backend/server.js` käynnistää palvelimen porttiin 3000.
+Backendin ensimmäinen versio on toteutettu Node.js:llä ja Express 5:llä. `backend/app.js` kokoaa sovelluksen reitit ja virheenkäsittelyn, `backend/routes/authRoutes.js` sisältää käyttäjätilin reitit ja `backend/server.js` käynnistää palvelimen porttiin 3000.
 
 Reitti `GET /api/health` palauttaa JSON-vastauksen `{"status":"ok"}`. Sen toiminta on tarkistettu käsin curlilla. Reitti kertoo backendin vastaavan pyyntöihin, mutta ei tarkista tietokantaa.
 
@@ -54,7 +54,9 @@ Kehityksen MariaDB-palvelu toimii Dockerissa, ja sen asetukset ovat tiedostossa 
 
 Rekisteröityminen on toteutettu. Backend validoi syötteen, normalisoi käyttäjätunnuksen pieniksi kirjaimiksi ja poistaa sen reunoilta välilyönnit. Salasana tallennetaan bcrypt-tiivisteenä, ja tietokantaan kirjoitetaan parametrisoidulla kyselyllä. Vastaukseen palautetaan vain käyttäjän tunniste ja käyttäjätunnus.
 
-Expressin health-reitti ei tarkista tietokantaa. Frontend, kirjautuminen, työpaikkojen käsittely sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
+Kirjautuminen ja suojattu omien käyttäjätietojen haku on toteutettu. `backend/auth.js` luo JWT-tokenit ja sisältää `requireAuth`-middlewaren, joka tarkistaa tokenin ennen suojatun reitin käsittelyä.
+
+Expressin health-reitti ei tarkista tietokantaa. Frontend, työpaikkojen käsittely sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
 
 ## REST API
 
@@ -72,9 +74,19 @@ Expressin health-reitti ei tarkista tietokantaa. Frontend, kirjautuminen, työpa
 
 Virhevastauksen muoto on `{"error":"Virheen kuvaus"}`. Sisäisiä virhetietoja, salasanoja tai niiden tiivisteitä ei palauteta. Rekisteröityminen luo tilin, mutta ei vielä kirjaa käyttäjää sisään.
 
-## Kehityksen tietokanta-asetukset
+### Kirjautuminen ja omat käyttäjätiedot
 
-Compose lukee ympäristökohtaiset arvot repon juuressa olevasta `.env`-tiedostosta. Uudessa asennuksessa kopioi `.env.example` tiedostoksi `.env` ja täytä salasanat. Säilytä olemassa olevan `.env`-tiedoston arvot.
+`POST /api/auth/login` vastaanottaa merkkijonokentät `username` ja `password`. Backend normalisoi käyttäjätunnuksen kuten rekisteröitymisessä ja vertaa salasanaa tallennettuun tiivisteeseen `bcrypt.compare`-funktiolla. Onnistunut vastaus on `200`, ja siinä palautetaan `token` sekä `user`-olio, jonka kentät ovat `id` ja `username`.
+
+Väärä salasana ja tuntematon käyttäjätunnus palauttavat saman `401`-virheen: `Virheellinen tunnus tai salasana.` Tuntemattoman käyttäjän tapauksessa tehdään vertailu valehashiin, jotta puuttuva bcrypt-vertailu ei aiheuta selvää vastausaikaeroa. Virheellinen pyynnön rakenne tai kenttien tietotyyppi palauttaa `400`.
+
+`GET /api/auth/me` edellyttää otsaketta `Authorization: Bearer <token>`. Kelvollisella tokenilla se palauttaa `200` ja käyttäjän `id`- ja `username`-kentät. Puuttuva tai virheellinen token sekä poistettu käyttäjätili johtavat `401`-vastaukseen.
+
+Token allekirjoitetaan HS256-algoritmilla, ja tarkistuksessa hyväksytään vain sama algoritmi. Token sisältää käyttäjätunnisteen `sub`-kentässä sekä myöntämis- ja vanhenemisajan. Tokenin sisältö ei ole salattu. `requireAuth` asettaa tarkistetun käyttäjätunnisteen arvoon `req.user.id`. Työpaikkareittien käyttäjäkohtaiset omistajuustarkistukset toteutetaan myöhemmin erikseen.
+
+## Kehityksen ympäristöasetukset
+
+Compose ja backendin npm-käynnistyskomennot lukevat ympäristökohtaiset arvot repon juuressa olevasta `.env`-tiedostosta. Uudessa asennuksessa kopioi `.env.example` tiedostoksi `.env`, täytä tietokantasalasanat ja luo JWT-allekirjoitusavain. Säilytä olemassa olevan `.env`-tiedoston arvot.
 
 | Muuttuja | Tarkoitus | Malliarvo |
 | --- | --- | --- |
@@ -85,6 +97,10 @@ Compose lukee ympäristökohtaiset arvot repon juuressa olevasta `.env`-tiedosto
 | `DB_PORT` | Kehityskoneelle julkaistu portti, jota paikallinen Node käyttää | `3306` |
 | `DB_ROOT_PASSWORD` | Ylläpitäjän salasana | Täytetään vain `.env`:iin |
 | `DB_PASSWORD` | Sovelluksen tietokantakäyttäjän salasana | Täytetään vain `.env`:iin |
+| `JWT_SECRET` | Satunnainen 32 tavun allekirjoitusavain 64 heksadesimaalimerkkinä | Luodaan vain paikalliseen `.env`:iin |
+| `JWT_TTL_SECONDS` | Tokenin voimassaoloaika sekunteina | `3600` |
+
+JWT-avain luodaan kryptografisesti turvallisella satunnaisgeneraattorilla. Backend tarkistaa avaimen muodon ja voimassaoloajan käynnistyksessä. `.env`-muutosten jälkeen backend on käynnistettävä uudelleen, jotta uudet arvot latautuvat.
 
 Pidä kehityksen `DB_HOST` arvossa `127.0.0.1`, jotta portti on käytettävissä vain omalla koneella. Kontin sisäinen MariaDB-portti on 3306. Tietokannan tiedot tallennetaan nimettyyn `dbdata`-volumeen.
 
@@ -156,5 +172,20 @@ Seuraavat curlilla suoritetut testit ovat onnistuneet paikallisessa kehitysympä
 | Rikkinäinen JSON | `400`, viesti `Virheellinen JSON.` |
 
 Puuttuvat kentät, salasanan pituusrajat ja liian suuri pyyntö odottavat vielä testausta.
+
+### Kirjautumisen ja suojatun reitin käsintestit
+
+Seuraavat paikallisen kehitysympäristön testit ovat onnistuneet:
+
+| Tapaus | Todettu tulos |
+| --- | --- |
+| Kirjautuminen oikeilla tunnuksilla | `200`, vastauksessa token ja käyttäjän julkiset tiedot |
+| `/api/auth/me` kirjautumisesta saadulla tokenilla | `200`, oikean käyttäjän `id` ja `username` |
+| `/api/auth/me` ilman tokenia | `401`, viesti `Kirjautuminen vaaditaan.` |
+| Kirjautuminen väärällä salasanalla | `401`, viesti `Virheellinen tunnus tai salasana.` |
+| Kirjautuminen tuntemattomalla käyttäjätunnuksella | `401`, sama vastaus kuin väärällä salasanalla |
+| `/api/auth/me` virheellisellä tokenilla | `401`, viesti `Istunto on virheellinen tai vanhentunut.` |
+
+Vanhentuneen tokenin hylkäämistä ei ole vielä varmennettu testillä.
 
 Varsinaista automaattista sovellustestisarjaa ei ole vielä toteutettu. `db:check` on erillinen yhteyden ja taulujen saatavuuden tarkistus. `package.json`-tiedoston `test`-komento on npm:n luoma oletus, joka päättyy virheeseen eikä suorita sovellustestejä.
