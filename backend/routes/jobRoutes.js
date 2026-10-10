@@ -8,6 +8,42 @@ const router = express.Router();
 // Check authentication before any job route accesses the database.
 router.use(requireAuth);
 
+// Validate the ID once for every route that contains an :id parameter.
+router.param('id', (req, res, next, value) => {
+  const jobId = Number(value);
+
+  // Accept only positive whole numbers that fit the database's INT UNSIGNED.
+  if (
+    !/^[1-9]\d*$/.test(value) ||
+    !Number.isSafeInteger(jobId) ||
+    jobId > 4294967295
+  ) {
+    return res.status(400).json({
+      error: 'Työpaikan tunnisteen tulee olla positiivinen kokonaisluku välillä 1–4294967295.',
+    });
+  }
+
+  // Give route handlers a checked number instead of the original URL text.
+  req.jobId = jobId;
+  next();
+});
+
+// Reuse the same fields and ownership check when reading a single job.
+async function findOwnJob(jobId, userId) {
+  const [rows] = await pool.execute(
+    `SELECT id, company, title, status, priority, match_level,
+            location, url,
+            DATE_FORMAT(deadline, '%Y-%m-%d') AS deadline,
+            notes
+     FROM jobs
+     WHERE id = ? AND user_id = ?`,
+    [jobId, userId]
+  );
+
+  // Undefined means that no matching record belongs to this user.
+  return rows[0];
+}
+
 router.get('/', async (req, res) => {
   // Format the deadline as plain text so no timezone conversion changes it.
   const [jobs] = await pool.execute(
@@ -60,6 +96,73 @@ router.post('/', async (req, res) => {
     id: result.insertId,
     ...job,
   });
+});
+
+router.get('/:id', async (req, res) => {
+  const job = await findOwnJob(req.jobId, req.user.id);
+
+  // Do not reveal whether a missing result belongs to another user.
+  if (!job) {
+    return res.status(404).json({ error: 'Työpaikkaa ei löytynyt.' });
+  }
+
+  return res.json(job);
+});
+
+router.put('/:id', async (req, res) => {
+  // Apply the same field rules and defaults as when creating a job.
+  const validation = validateJob(req.body);
+
+  if (validation.error) {
+    return res.status(400).json({ error: validation.error });
+  }
+
+  const job = validation.value;
+
+  // Check ownership in the UPDATE itself so another user's row cannot change.
+  await pool.execute(
+    `UPDATE jobs
+     SET company = ?, title = ?, status = ?, priority = ?,
+         match_level = ?, location = ?, url = ?, deadline = ?, notes = ?
+     WHERE id = ? AND user_id = ?`,
+    [
+      job.company,
+      job.title,
+      job.status,
+      job.priority,
+      job.match_level,
+      job.location,
+      job.url,
+      job.deadline,
+      job.notes,
+      req.jobId,
+      req.user.id,
+    ]
+  );
+
+  // Read the saved row; submitting unchanged values must also succeed.
+  const updatedJob = await findOwnJob(req.jobId, req.user.id);
+
+  if (!updatedJob) {
+    return res.status(404).json({ error: 'Työpaikkaa ei löytynyt.' });
+  }
+
+  return res.json(updatedJob);
+});
+
+router.delete('/:id', async (req, res) => {
+  // Both conditions must match before MariaDB can delete the record.
+  const [result] = await pool.execute(
+    'DELETE FROM jobs WHERE id = ? AND user_id = ?',
+    [req.jobId, req.user.id]
+  );
+
+  // Zero deleted rows means this user had no matching job.
+  if (result.affectedRows === 0) {
+    return res.status(404).json({ error: 'Työpaikkaa ei löytynyt.' });
+  }
+
+  return res.json({ message: 'Työpaikka poistettu.' });
 });
 
 module.exports = router;

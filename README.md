@@ -58,9 +58,9 @@ Kirjautuminen ja suojattu omien käyttäjätietojen haku on toteutettu. `backend
 
 Rekisteröitymisen, kirjautumisen ja omien tietojen haun yhteistoimintaa testataan myös oikealla MariaDB-yhteydellä. Integraatiotesti käyttää erillistä testikonttia, jonka asetukset ovat tiedostossa `docker-compose.test.yml`.
 
-Työpaikan lisääminen ja omien työpaikkojen listaaminen on toteutettu tiedostossa `backend/routes/jobRoutes.js`. Rajapinta käsittelee yrityksen, tehtävänimikkeen, hakemuksen tilan, prioriteetin, sopivuusluokan, sijainnin, ilmoituksen URL-osoitteen, hakuajan ja muistiinpanot. Syötteiden validointi on erotettu tiedostoon `backend/jobValidation.js`. Kahden käyttäjän integraatiotesti varmistaa tallennetut tiedot, oletusarvot ja sen, että kumpikin näkee vain omat työpaikkansa.
+Työpaikkojen käyttäjäkohtainen CRUD on toteutettu tiedostossa `backend/routes/jobRoutes.js`: lisääminen, listaus, yksittäisen työpaikan haku, muokkaaminen ja poistaminen. Rajapinta käsittelee yrityksen, tehtävänimikkeen, hakemuksen tilan, prioriteetin, sopivuusluokan, sijainnin, ilmoituksen URL-osoitteen, hakuajan ja muistiinpanot. Syötteiden validointi on erotettu tiedostoon `backend/jobValidation.js`. Kahden käyttäjän integraatiotesti varmistaa tallennetut tiedot, oletusarvot sekä sen, ettei toinen käyttäjä voi lukea, muokata tai poistaa toisen työpaikkaa.
 
-Frontend, yksittäisen työpaikan haku, muokkaaminen ja poistaminen, listauksen suodatus ja prioriteettijärjestys sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
+Frontend, listauksen suodatus ja prioriteettijärjestys sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
 
 ## REST API
 
@@ -88,16 +88,25 @@ Väärä salasana ja tuntematon käyttäjätunnus palauttavat saman `401`-virhee
 
 Token allekirjoitetaan HS256-algoritmilla, ja tarkistuksessa hyväksytään vain sama algoritmi. Token sisältää käyttäjätunnisteen `sub`-kentässä sekä myöntämis- ja vanhenemisajan. Tokenin sisältö ei ole salattu. `requireAuth` asettaa tarkistetun käyttäjätunnisteen arvoon `req.user.id`. Työpaikan lisääminen käyttää tätä tunnistetta omistajana, ja listaus rajataan siihen SQL-kyselyssä.
 
-### Työpaikan lisääminen ja omien työpaikkojen listaus
+### Työpaikkojen CRUD
 
-Molemmat reitit edellyttävät otsaketta `Authorization: Bearer <token>`.
+Kaikki työpaikkareitit edellyttävät otsaketta `Authorization: Bearer <token>`.
 
 | Metodi ja polku | Toiminta | Onnistunut vastaus |
 | --- | --- | --- |
 | `POST /api/jobs` | Lisää työpaikan kirjautuneelle käyttäjälle | `201`, tallennettu työpaikka oliona |
 | `GET /api/jobs` | Listaa kirjautuneen käyttäjän työpaikat uusimman id:n mukaan ensin | `200`, taulukko työpaikkaolioita |
+| `GET /api/jobs/:id` | Hakee yhden oman työpaikan | `200`, työpaikka oliona |
+| `PUT /api/jobs/:id` | Korvaa oman työpaikan muokattavat tiedot | `200`, tallennettu työpaikka oliona |
+| `DELETE /api/jobs/:id` | Poistaa oman työpaikan | `200`, `{"message":"Työpaikka poistettu."}` |
 
-Molemmat reitit palauttavat työpaikan kentät `id`, `company`, `title`, `status`, `priority`, `match_level`, `location`, `url`, `deadline` ja `notes`. Hakuaika palautetaan merkkijonona muodossa `YYYY-MM-DD` tai arvona `null`. Listan järjestäminen prioriteetin mukaan toteutetaan myöhemmin.
+Työpaikkaolio sisältää kentät `id`, `company`, `title`, `status`, `priority`, `match_level`, `location`, `url`, `deadline` ja `notes`. Hakuaika palautetaan merkkijonona muodossa `YYYY-MM-DD` tai arvona `null`. Listan järjestäminen prioriteetin mukaan toteutetaan myöhemmin.
+
+Polun `:id` tarkistetaan yhteisessä `router.param`-käsittelijässä. Sallittu muoto on positiivinen kokonaisluku välillä 1–4294967295 ilman etunollia. Virheellinen tunniste palauttaa `400` ennen tietokantakyselyä.
+
+Yksittäisen työpaikan haku, päivitys ja poisto rajataan SQL-ehdolla `WHERE id = ? AND user_id = ?`. Puuttuva työpaikka ja toisen käyttäjän työpaikka palauttavat saman `404`-vastauksen `{"error":"Työpaikkaa ei löytynyt."}`. Päivityksessä pyynnön sisältö validoidaan ensin, joten virheellinen syöte palauttaa `400`.
+
+`PUT` korvaa kaikki muokattavat tiedot ja käyttää samaa validointia kuin lisääminen. Yritys ja tehtävänimike ovat pakollisia. Pois jätetyt valinnaiset kentät palautuvat alla kuvattuihin oletusarvoihinsa. Tunniste ja omistaja säilyvät ennallaan. Myös saman päivityksen toistaminen muuttumattomilla arvoilla palauttaa `200`.
 
 Lisäyspyynnön esimerkki:
 
@@ -313,7 +322,7 @@ Testikontin on oltava käynnissä. Erillistä `npm run dev` -palvelinta ei tarvi
 
 ### Työpaikkojen integraatiotesti
 
-Tiedosto `backend/test/jobs.integration.js` ajetaan samalla `npm run test:integration` -komennolla ja samalla testitietokannalla kuin autentikoinnin integraatiotesti. Se luo kaksi omaa testikäyttäjää ja tarkistaa työpaikkojen lisäämisen, validoinnin sekä käyttäjien tietojen eristämisen listauksessa.
+Tiedosto `backend/test/jobs.integration.js` ajetaan samalla `npm run test:integration` -komennolla ja samalla testitietokannalla kuin autentikoinnin integraatiotesti. Se luo kaksi omaa testikäyttäjää ja tarkistaa työpaikkojen CRUD-toiminnot, validoinnin sekä käyttäjien tietojen eristämisen.
 
 | Tarkistus | Todettu tulos |
 | --- | --- |
@@ -334,9 +343,19 @@ Tiedosto `backend/test/jobs.integration.js` ajetaan samalla `npm run test:integr
 | Sijainti, HTTPS-osoite, karkauspäivä `2028-02-29` ja moniriviset muistiinpanot | Palautuvat normalisoituina sekä lisäysvastauksessa että listauksessa |
 | Lisätietojen pois jättäminen, tyhjät merkkijonot, välilyönnit ja eksplisiittinen `null` | Lisätietokentät palautuvat arvona `null` myös tietokannasta luettuina |
 | Käyttäjäkohtainen listaus | Kummankin listalla on täsmälleen oma työpaikka eikä hylättyjä lisäyksiä |
+| Yksittäisen työpaikan haku, muokkaaminen ja poistaminen ilman tokenia | `401` |
+| Virheelliset polun tunnisteet kaikissa kolmessa yksittäisen työpaikan reitissä | `400` |
+| Toisen käyttäjän työpaikan haku, muokkaus ja poisto | `404` ja sama virheviesti; alkuperäinen tietue säilyy ennallaan |
+| Virheelliset päivityssyötteet | `400`, alkuperäiset tiedot säilyvät |
+| Oman työpaikan haku ja päivitys | `200`, oikeat tiedot myös erillisessä päivityksen jälkeisessä haussa |
+| Saman päivityksen toistaminen | Molemmista `200` |
+| Valinnaisten kenttien pois jättäminen PUT-pyynnöstä | Kentät palautuvat oletusarvoihinsa |
+| Oman työpaikan poisto | `200`, eikä työpaikka enää näy listauksessa |
+| Poistetun työpaikan haku, muokkaus ja uusi poisto | `404` ja sama virheviesti kuin toisen käyttäjän työpaikasta |
+| Toisen käyttäjän tietue käsittelyketjun jälkeen | Säilyy ennallaan |
 
 Testi käyttää satunnaisia käyttäjätunnuksia. Siivouksessa poistetaan vain testin omat työpaikat ja käyttäjät. Työpaikat poistetaan ennen käyttäjiä tietokannan viiteavaimen vuoksi.
 
-Opiskelijan paikallisissa testiajoissa 10.10.2026 kaikki yhdeksän JWT-testiä ja kaksi integraatiotestiä läpäistiin, eikä epäonnistuneita testejä ollut. Kumpikin integraatiotesti sisältää useita tarkistuksia, mutta testityökalu laskee sen yhdeksi testiksi.
+Opiskelijan paikallisissa testiajoissa 11.10.2026 kaikki yhdeksän JWT-testiä ja kaksi integraatiotestiä läpäistiin, eikä epäonnistuneita testejä ollut. Työpaikkojen testi kattoi myös haun, muokkaamisen ja poistamisen. Kumpikin integraatiotesti sisältää useita tarkistuksia, mutta testityökalu laskee sen yhdeksi testiksi.
 
-Autentikoinnin puuttuvien kenttien ja salasanan pituusrajojen automaattiset testit sekä frontendin testit toteutetaan myöhemmin. Työpaikkojen testejä laajennetaan muokkaamisen ja poistamisen yhteydessä. Nykyinen testi ei vielä tarkista listan järjestystä usealla saman käyttäjän työpaikalla tai kenttien kaikkia hyväksyttyjä pituusrajoja.
+Autentikoinnin puuttuvien kenttien ja salasanan pituusrajojen automaattiset testit sekä frontendin testit toteutetaan myöhemmin. Nykyinen työpaikkojen testi ei vielä tarkista listan järjestystä usealla saman käyttäjän työpaikalla tai kenttien kaikkia hyväksyttyjä pituusrajoja.

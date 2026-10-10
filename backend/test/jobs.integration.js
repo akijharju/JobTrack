@@ -104,7 +104,7 @@ async function request(path, { method = 'GET', body, token } = {}) {
   };
 }
 
-test('job creation validates input and keeps user records separate', async () => {
+test('job CRUD validates input and keeps user records separate', async () => {
   const users = [];
 
   // Create two real accounts so both owners satisfy the database foreign key.
@@ -285,4 +285,158 @@ test('job creation validates input and keeps user records separate', async () =>
     const savedJob = list.body.find((job) => job.id === response.body.id);
     assert.deepEqual(savedJob, response.body);
   }
+
+  const jobPath = `/api/jobs/${jobA.body.id}`;
+  const methods = ['GET', 'PUT', 'DELETE'];
+
+  // Every route must require authentication, including reads and deletion.
+  for (const method of methods) {
+    const response = await request(jobPath, {
+      method,
+      body: method === 'PUT' ? validBody : undefined,
+    });
+
+    assert.equal(response.status, 401);
+  }
+
+  // Reject malformed IDs instead of letting SQL convert them into numbers.
+  const invalidIds = ['abc', '0', '-1', '1.5', '12abc', '4294967296'];
+
+  for (const id of invalidIds) {
+    for (const method of methods) {
+      const response = await request(`/api/jobs/${id}`, {
+        method,
+        token: tokenA,
+        body: method === 'PUT' ? validBody : undefined,
+      });
+
+      assert.equal(response.status, 400);
+    }
+  }
+
+  // User B must not read, replace or delete the record owned by user A.
+  for (const method of methods) {
+    const response = await request(jobPath, {
+      method,
+      token: tokenB,
+      body: method === 'PUT' ? validBody : undefined,
+    });
+
+    assert.equal(response.status, 404);
+    assert.deepEqual(response.body, {
+      error: 'Työpaikkaa ei löytynyt.',
+    });
+  }
+
+  // Editing must reject the same invalid inputs as creation.
+  for (const body of invalidBodies) {
+    const response = await request(jobPath, {
+      method: 'PUT',
+      token: tokenA,
+      body,
+    });
+
+    assert.equal(response.status, 400);
+  }
+
+  // Failed requests must leave the owner's original record unchanged.
+  const originalJob = await request(jobPath, { token: tokenA });
+  assert.equal(originalJob.status, 200);
+  assert.deepEqual(originalJob.body, jobA.body);
+
+  const replacement = {
+    company: 'Yritys A Oy',
+    title: 'Ohjelmistokehittäjä',
+    status: 'interview',
+    priority: 'normal',
+    match_level: 'partial',
+    location: 'Tampere',
+    url: 'https://example.com/jobs/updated',
+    deadline: '2028-03-01',
+    notes: 'Haastattelu sovittu.',
+  };
+
+  // Repeat the same update to check that unchanged values still return 200.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const updated = await request(jobPath, {
+      method: 'PUT',
+      token: tokenA,
+      body: replacement,
+    });
+
+    assert.equal(updated.status, 200);
+    assert.deepEqual(updated.body, {
+      id: jobA.body.id,
+      ...replacement,
+    });
+  }
+
+  // A separate GET confirms that the replacement was stored in the database.
+  const savedReplacement = await request(jobPath, { token: tokenA });
+  assert.equal(savedReplacement.status, 200);
+  assert.deepEqual(savedReplacement.body, {
+    id: jobA.body.id,
+    ...replacement,
+  });
+
+  // PUT resets omitted optional fields instead of keeping their previous values.
+  const reset = await request(jobPath, {
+    method: 'PUT',
+    token: tokenA,
+    body: validBody,
+  });
+
+  assert.equal(reset.status, 200);
+  assert.deepEqual(reset.body, {
+    id: jobA.body.id,
+    ...validBody,
+    status: 'interested',
+    priority: 'normal',
+    match_level: null,
+    location: null,
+    url: null,
+    deadline: null,
+    notes: null,
+  });
+
+  // The owner can delete the record after reading and editing it.
+  const deleted = await request(jobPath, {
+    method: 'DELETE',
+    token: tokenA,
+  });
+
+  assert.equal(deleted.status, 200);
+  assert.deepEqual(deleted.body, {
+    message: 'Työpaikka poistettu.',
+  });
+
+  // A deleted record must return the same error as another user's record.
+  for (const method of methods) {
+    const response = await request(jobPath, {
+      method,
+      token: tokenA,
+      body: method === 'PUT' ? validBody : undefined,
+    });
+
+    assert.equal(response.status, 404);
+    assert.deepEqual(response.body, {
+      error: 'Työpaikkaa ei löytynyt.',
+    });
+  }
+
+  // Deletion must also remove the record from the owner's list.
+  const remainingJobs = await request('/api/jobs', { token: tokenA });
+  assert.equal(remainingJobs.status, 200);
+  assert.equal(
+    remainingJobs.body.some((job) => job.id === jobA.body.id),
+    false
+  );
+
+  // All operations on user A's record must leave user B's record untouched.
+  const otherJob = await request(`/api/jobs/${jobB.body.id}`, {
+    token: tokenB,
+  });
+
+  assert.equal(otherJob.status, 200);
+  assert.deepEqual(otherJob.body, jobB.body);
 });
