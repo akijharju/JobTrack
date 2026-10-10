@@ -58,9 +58,9 @@ Kirjautuminen ja suojattu omien käyttäjätietojen haku on toteutettu. `backend
 
 Rekisteröitymisen, kirjautumisen ja omien tietojen haun yhteistoimintaa testataan myös oikealla MariaDB-yhteydellä. Integraatiotesti käyttää erillistä testikonttia, jonka asetukset ovat tiedostossa `docker-compose.test.yml`.
 
-Työpaikan lisääminen ja omien työpaikkojen listaaminen on toteutettu tiedostossa `backend/routes/jobRoutes.js`. Rajapinta käsittelee yrityksen, tehtävänimikkeen, hakemuksen tilan, prioriteetin ja sopivuusluokan. Kahden käyttäjän integraatiotesti varmistaa tallennetut valinnat, oletusarvot ja sen, että kumpikin näkee vain omat työpaikkansa.
+Työpaikan lisääminen ja omien työpaikkojen listaaminen on toteutettu tiedostossa `backend/routes/jobRoutes.js`. Rajapinta käsittelee yrityksen, tehtävänimikkeen, hakemuksen tilan, prioriteetin, sopivuusluokan, sijainnin, ilmoituksen URL-osoitteen, hakuajan ja muistiinpanot. Syötteiden validointi on erotettu tiedostoon `backend/jobValidation.js`. Kahden käyttäjän integraatiotesti varmistaa tallennetut tiedot, oletusarvot ja sen, että kumpikin näkee vain omat työpaikkansa.
 
-Frontend, työpaikkojen muiden kenttien käsittely, yksittäisen työpaikan haku, muokkaaminen ja poistaminen sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
+Frontend, yksittäisen työpaikan haku, muokkaaminen ja poistaminen, listauksen suodatus ja prioriteettijärjestys sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
 
 ## REST API
 
@@ -97,7 +97,7 @@ Molemmat reitit edellyttävät otsaketta `Authorization: Bearer <token>`.
 | `POST /api/jobs` | Lisää työpaikan kirjautuneelle käyttäjälle | `201`, tallennettu työpaikka oliona |
 | `GET /api/jobs` | Listaa kirjautuneen käyttäjän työpaikat uusimman id:n mukaan ensin | `200`, taulukko työpaikkaolioita |
 
-Molemmat reitit palauttavat työpaikan kentät `id`, `company`, `title`, `status`, `priority` ja `match_level`. Listan järjestäminen prioriteetin mukaan toteutetaan myöhemmin.
+Molemmat reitit palauttavat työpaikan kentät `id`, `company`, `title`, `status`, `priority`, `match_level`, `location`, `url`, `deadline` ja `notes`. Hakuaika palautetaan merkkijonona muodossa `YYYY-MM-DD` tai arvona `null`. Listan järjestäminen prioriteetin mukaan toteutetaan myöhemmin.
 
 Lisäyspyynnön esimerkki:
 
@@ -107,7 +107,11 @@ Lisäyspyynnön esimerkki:
   "title": "Ohjelmistokehittäjä",
   "status": "applied",
   "priority": "high",
-  "match_level": "stretch"
+  "match_level": "stretch",
+  "location": "Helsinki / etä",
+  "url": "https://example.com/jobs/123",
+  "deadline": "2028-02-29",
+  "notes": "Kysy etätyömahdollisuudesta."
 }
 ```
 
@@ -121,7 +125,20 @@ Kentät `company` ja `title` ovat pakollisia merkkijonoja. Niiden reunoilta pois
 
 Oletusarvo asetetaan vain puuttuvalle kentälle. Kentät `status` ja `priority` eivät hyväksy arvoa `null`. Sopivuusluokan `null` tarkoittaa, ettei sopivuutta ole arvioitu. Valintojen merkkijonoarvot hyväksytään täsmälleen taulukon muodossa. Virheelliset arvot hylätään `400`-vastauksella ennen tietokantaan kirjoittamista.
 
-Muut kentät, myös asiakkaan lähettämä `user_id`, hylätään `400`-vastauksella. Sijaintia, URL-osoitetta, hakuaikaa ja muistiinpanoja ei vielä käsitellä rajapinnassa.
+Lisätietojen säännöt:
+
+| Valinnainen kenttä | Sääntö |
+| --- | --- |
+| `location` | Merkkijono, enintään 150 Unicode-koodipistettä |
+| `url` | Merkkijono, enintään 2048 Unicode-koodipistettä; alkaa `http://` tai `https://` ja läpäisee URL-jäsennyksen |
+| `deadline` | Todellinen päivämäärä muodossa `YYYY-MM-DD`, vuosi 1000–9999; myös mennyt päivämäärä sallitaan |
+| `notes` | Merkkijono, enintään 2000 Unicode-koodipistettä; sovelluksen oma pituusraja |
+
+Näissä neljässä lisätietokentässä puuttuva arvo, JSON-arvo `null`, tyhjä merkkijono ja pelkät välilyönnit tallennetaan arvona `null`. Tekstin reunoilta poistetaan välilyönnit ennen pituustarkistusta, mutta sisäiset välilyönnit ja rivinvaihdot säilytetään. Muita tietotyyppejä ei muuteta automaattisesti tekstiksi.
+
+URL-tarkistus ei tee verkkopyyntöä eikä varmista ilmoituksen olemassaoloa. Päivämäärän tarkistus hylkää mahdottomat päivät, kuten `2026-02-30`, ja hyväksyy kelvollisen karkauspäivän. Listauksen SQL-kysely käyttää `DATE_FORMAT`-funktiota, jotta hakuaika palautuu päivämäärätekstinä ilman aikavyöhykemuunnosta.
+
+Tuntemattomat kentät, myös asiakkaan lähettämät `id` ja `user_id`, hylätään `400`-vastauksella.
 
 Työpaikan omistaja otetaan aina tarkistetusta tokenista. Listauksen parametrisoitu SQL-kysely rajaa rivit ehdolla `WHERE user_id = ?`. Käyttäjä, jolla ei ole työpaikkoja, saa vastaukseksi tyhjän taulukon `[]`.
 
@@ -311,10 +328,15 @@ Tiedosto `backend/test/jobs.integration.js` ajetaan samalla `npm run test:integr
 | Yrityksen ja tehtävänimikkeen reunoilla olevat välilyönnit | Poistetaan ennen tallennusta |
 | Valinnat `applied`, `high` ja `stretch` | Palautuvat sekä lisäysvastauksessa että tietokannasta luetussa listauksessa |
 | Tilan, prioriteetin ja sopivuusluokan jättäminen pois pyynnöstä | Molemmissa vastauksissa oletusarvot `interested`, `normal` ja `null` |
+| Lisätietojen väärät tietotyypit sekä sijainnin, URL-osoitteen ja muistiinpanojen ylipitkät arvot | `400` |
+| Virheellinen URL-osoite ja `javascript:`-osoite | `400` |
+| Väärä päivämäärämuoto, mahdoton päivä ja virheellinen kuukausi | `400` |
+| Sijainti, HTTPS-osoite, karkauspäivä `2028-02-29` ja moniriviset muistiinpanot | Palautuvat normalisoituina sekä lisäysvastauksessa että listauksessa |
+| Lisätietojen pois jättäminen, tyhjät merkkijonot, välilyönnit ja eksplisiittinen `null` | Lisätietokentät palautuvat arvona `null` myös tietokannasta luettuina |
 | Käyttäjäkohtainen listaus | Kummankin listalla on täsmälleen oma työpaikka eikä hylättyjä lisäyksiä |
 
 Testi käyttää satunnaisia käyttäjätunnuksia. Siivouksessa poistetaan vain testin omat työpaikat ja käyttäjät. Työpaikat poistetaan ennen käyttäjiä tietokannan viiteavaimen vuoksi.
 
 Opiskelijan paikallisissa testiajoissa 10.10.2026 kaikki yhdeksän JWT-testiä ja kaksi integraatiotestiä läpäistiin, eikä epäonnistuneita testejä ollut. Kumpikin integraatiotesti sisältää useita tarkistuksia, mutta testityökalu laskee sen yhdeksi testiksi.
 
-Autentikoinnin puuttuvien kenttien ja salasanan pituusrajojen automaattiset testit sekä frontendin testit toteutetaan myöhemmin. Työpaikkojen testejä laajennetaan muiden kenttien, muokkaamisen ja poistamisen yhteydessä. Nykyinen testi ei vielä tarkista listan järjestystä usealla saman käyttäjän työpaikalla tai täsmälleen 1 ja 100 merkin hyväksyttyjä pituusrajoja.
+Autentikoinnin puuttuvien kenttien ja salasanan pituusrajojen automaattiset testit sekä frontendin testit toteutetaan myöhemmin. Työpaikkojen testejä laajennetaan muokkaamisen ja poistamisen yhteydessä. Nykyinen testi ei vielä tarkista listan järjestystä usealla saman käyttäjän työpaikalla tai kenttien kaikkia hyväksyttyjä pituusrajoja.

@@ -162,6 +162,19 @@ test('job creation validates input and keeps user records separate', async () =>
     { ...validBody, match_level: 'perfect' },
     { ...validBody, match_level: '' },
     { ...validBody, match_level: 123 },
+    { ...validBody, location: 123 },
+    { ...validBody, location: 'a'.repeat(151) },
+    { ...validBody, url: false },
+    { ...validBody, url: 'ei-osoite' },
+    { ...validBody, url: 'javascript:alert(1)' },
+    { ...validBody, url: 'https://example.com/' + 'a'.repeat(2048) },
+    { ...validBody, deadline: 20261031 },
+    { ...validBody, deadline: '31.10.2026' },
+    { ...validBody, deadline: '2026-02-30' },
+    { ...validBody, deadline: '2026-02-29' },
+    { ...validBody, deadline: '2026-13-01' },
+    { ...validBody, notes: [] },
+    { ...validBody, notes: 'a'.repeat(2001) },
   ];
 
   for (const body of invalidBodies) {
@@ -185,6 +198,10 @@ test('job creation validates input and keeps user records separate', async () =>
       status: 'applied',
       priority: 'high',
       match_level: 'stretch',
+      location: '  Helsinki / etä  ',
+      url: '  https://example.com/jobs/123  ',
+      deadline: '2028-02-29',
+      notes: '  React ja Node.js.\nKysy etätyöstä.  ',
     },
   });
 
@@ -212,6 +229,10 @@ test('job creation validates input and keeps user records separate', async () =>
     status: 'applied',
     priority: 'high',
     match_level: 'stretch',
+    location: 'Helsinki / etä',
+    url: 'https://example.com/jobs/123',
+    deadline: '2028-02-29',
+    notes: 'React ja Node.js.\nKysy etätyöstä.',
   });
 
   // Defaults must be visible in the response, not just stored in the database.
@@ -222,6 +243,10 @@ test('job creation validates input and keeps user records separate', async () =>
     status: 'interested',
     priority: 'normal',
     match_level: null,
+    location: null,
+    url: null,
+    deadline: null,
+    notes: null,
   });
 
   // Read the records again to verify storage and user-specific filtering.
@@ -232,4 +257,32 @@ test('job creation validates input and keeps user records separate', async () =>
   assert.equal(listB.status, 200);
   assert.deepEqual(listA.body, [jobA.body]);
   assert.deepEqual(listB.body, [jobB.body]);
+
+    // Empty strings, whitespace and explicit null must all mean missing details.
+  for (const value of ['', '   ', null]) {
+    const response = await request('/api/jobs', {
+      method: 'POST',
+      token: tokenA,
+      body: {
+        ...validBody,
+        location: value,
+        url: value,
+        deadline: value,
+        notes: value,
+      },
+    });
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.location, null);
+    assert.equal(response.body.url, null);
+    assert.equal(response.body.deadline, null);
+    assert.equal(response.body.notes, null);
+
+    // Read the record back to check stored NULL values as well as the response.
+    const list = await request('/api/jobs', { token: tokenA });
+    assert.equal(list.status, 200);
+
+    const savedJob = list.body.find((job) => job.id === response.body.id);
+    assert.deepEqual(savedJob, response.body);
+  }
 });
