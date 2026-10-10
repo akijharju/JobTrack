@@ -32,6 +32,39 @@ Tuontiin suunnitellaan esikatselu, tallennettavien työpaikkojen valinta, tietoj
 
 ## Projektin nykytila
 
-Projekti on suunnitteluvaiheessa. Työskentelyohjeet on tallennettu `AGENTS.md`-tiedostoon. Kehitysympäristössä on tarkistettu Gitin, npm:n, Dockerin ja Docker Composen versiot sekä otettu käyttöön Node.js 24 nvm:n avulla. Docker-palvelun toimintaa ei ole vielä testattu.
+Backendin ensimmäinen versio on toteutettu Node.js:llä ja Express 5:llä. Sovelluksen reitit määritellään tiedostossa `backend/app.js`, ja `backend/server.js` käynnistää palvelimen porttiin 3000.
 
-Sovelluskoodia, tietokantaa tai Docker-asetuksia ei ole vielä toteutettu, eikä sovellustestejä ole ajettu. Asennus- ja käynnistysohjeet lisätään, kun niiden toimivuus on varmistettu.
+Reitti `GET /api/health` palauttaa JSON-vastauksen `{"status":"ok"}`. Sen toiminta on tarkistettu käsin curlilla. Reitti kertoo backendin vastaavan pyyntöihin, mutta ei tarkista tietokantaa.
+
+Työskentelyohjeet ovat tiedostossa `AGENTS.md`. Kehitysympäristössä on käytössä Node.js 24 nvm:n kautta. Docker-palveluun on saatu yhteys komennolla `docker info --format '{{.ServerVersion}}'`.
+
+Frontend, kirjautuminen, työpaikkojen käsittely, tietokanta ja Docker-asetukset ovat vielä toteuttamatta.
+
+## Backendin käynnistäminen kehityksessä
+
+Kehityksessä käytetään Node.js 24:ää ja npm:ää. Asenna riippuvuudet ensimmäisellä käyttökerralla repon juuresta seuraavasti:
+
+```sh
+cd backend
+npm install
+```
+
+Käynnistä backend samassa hakemistossa:
+
+```sh
+npm run dev
+```
+
+Palvelin kuuntelee osoitteessa `http://localhost:3000`. Kehitystila käynnistää palvelimen uudelleen koodin muuttuessa. Palvelimen voi pysäyttää näppäinyhdistelmällä Ctrl+C.
+
+## Testaus
+
+Kun backend on käynnissä, suorita toisessa terminaalissa:
+
+```sh
+curl -i http://localhost:3000/api/health
+```
+
+Odotettu HTTP-status on `200 OK` ja vastauksen runko `{"status":"ok"}`. Tämä käsintesti on onnistunut paikallisessa kehitysympäristössä.
+
+Automaattisia testejä ei ole vielä toteutettu. `package.json`-tiedoston `test`-komento on npm:n luoma oletus, joka päättyy virheeseen eikä suorita sovellustestejä.
