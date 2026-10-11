@@ -224,6 +224,7 @@ docker-compose.dev.yml        Kehityksen tietokanta
 docker-compose.test.yml       Erillinen testitietokanta
 .env.example                  Asetusmalli ilman salaisuuksia
 .env.test.example             Testiympäristön asetusmalli
+.gitlab-ci.yml                GitLab CI/CD -testipipeline
 AGENTS.md                     Koodausavustimen työskentelyohjeet
 README.md                     Projektin dokumentaatio
 ```
@@ -746,7 +747,12 @@ Autentikoinnin puuttuvien kenttien ja salasanan pituusrajojen automaattiset test
 
 ## CI/CD
 
-Repositoriossa ei tällä hetkellä ole `.gitlab-ci.yml`-tiedostoa. Testit, frontendin tarkistukset ja Docker-kuvien rakennus suoritetaan yllä kuvatuilla komennoilla. Automaattista käyttöönottoa ei ole toteutettu. CI/CD esiintyy opettajan dokumentaation esimerkkirakenteessa; annetussa varsinaisessa tehtävänannossa sille ei aseteta erillistä pakollista toteutusvaatimusta.
+Projektissa on käytössä GitLab CI/CD -automaatiopipeline, joka on määritelty tiedostossa `.gitlab-ci.yml`. Pipeline käynnistyy automaattisesti jokaisen GitLab-pushin yhteydessä ja suorittaa seuraavat tarkistukset `node:20-alpine` -konttiympäristössä:
+
+1. **Frontend**: Asentaa riippuvuudet (`npm ci`), suorittaa koodin laadun ja virheettömyyden staattisen tarkistuksen (`npm run lint`) sekä varmistaa tuotantopaketin onnistuneen koostamisen (`npm run build`).
+2. **Backend**: Asentaa riippuvuudet (`npm ci`) ja suorittaa automaattiset autentikointilogiikan ja middlewaren yksikkötestit (`npm test`).
+
+Automaattinen pipeline keskittyy nopeisiin ja riippumattomiin testeihin ja käännöksiin. MariaDB-testikantaa hyödyntävät integraatiotestit (`npm run test:integration`) ajetaan paikallisesti Docker Compose -testikonttia vasten, jotta pilvessä suoritettava pipeline ei vaadi erillistä tietokantapalvelua. Automaattista käyttöönottoa (deploy) ei ole määritelty paikallista ajoympäristöä varten.
 
 ## Palautus ja esittely
 

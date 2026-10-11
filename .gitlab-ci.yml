@@ -1,0 +1,20 @@
+# GitLab CI/CD pipeline for JobTrack
+stages:
+  - test
+
+frontend-check:
+  stage: test
+  image: node:20-alpine
+  script:
+    - cd frontend
+    - npm ci
+    - npm run lint
+    - npm run build
+
+backend-unit-tests:
+  stage: test
+  image: node:20-alpine
+  script:
+    - cd backend
+    - npm ci
+    - npm test
