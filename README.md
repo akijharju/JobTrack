@@ -6,7 +6,7 @@ JobTrack on työnhaun seurantasovellus, jonka toteutan Full Stack Web Developmen
 
 Tavoitteena on oppia rakentamaan kokonainen web-sovellus ja ymmärtää käyttöliittymän, palvelimen ja tietokannan välinen toiminta.
 
-## Ensimmäisen version suunnitellut ominaisuudet
+## Toteutetut ominaisuudet
 
 - Käyttäjän rekisteröityminen, kirjautuminen ja uloskirjautuminen.
 - Omien työpaikkatietojen lisääminen, listaaminen, muokkaaminen ja poistaminen eli CRUD-toiminnot.
@@ -15,6 +15,7 @@ Tavoitteena on oppia rakentamaan kokonainen web-sovellus ja ymmärtää käyttö
 - Valinnainen sopivuusluokka oman osaamisen ja tehtävän vaatimusten vertailuun.
 - Tietojen pysyvä tallentaminen MariaDB-tietokantaan.
 - Käyttäjäkohtaiset tiedot, joihin vain niiden omistajalla on pääsy.
+- Työpaikkojen JSON-tuonti, esikatselu, rivivalinta ja kaksoiskappaleiden ohitus.
 
 Frontend käyttää backendin REST API -rajapintaa. Keskeiset toiminnot, virhetilanteet ja käyttäjien tietojen eristäminen testataan toteutuksen edetessä.
 
@@ -26,7 +27,7 @@ Sopivuusluokka kuvaa omaa arviotani osaamiseni vastaavuudesta tehtävän vaatimu
 
 Prioriteetti, sopivuusluokka ja hakemuksen tila ovat erillisiä tietoja. Esimerkiksi stretch-tehtävällä voi olla korkea prioriteetti ja hakemuksen tilana haastattelu. Osaamisen kehityskohteet kirjataan aluksi muistiinpanoihin.
 
-## Suunnitellut teknologiat
+## Käytetyt teknologiat
 
 - **React** – sovelluksen käyttöliittymä selaimessa.
 - **Node.js ja Express** – backend ja REST API, joka käsittelee käyttöliittymän pyynnöt.
@@ -39,6 +40,18 @@ Prioriteetti, sopivuusluokka ja hakemuksen tila ovat erillisiä tietoja. Esimerk
 Sovellukseen voi tuoda työpaikkoja JSON-tiedostosta. Käytän tätä ChatGPT:ssä toimivan työpaikkavahtini löytämien ilmoitusten siirtämiseen käsin.
 
 Tuontimuoto on JSON-olio, jonka ainoa kenttä on 1–20 työpaikkaa sisältävä `jobs`-taulukko. Työpaikat käyttävät samoja kenttiä kuin tavallinen lisäys, mutta tuonnissa ilmoituksen URL-osoite on pakollinen. Tiedoston enimmäiskoko on 256 KiB. Backendin validointi, esikatselu ja tallennus sekä tuonnin käyttöliittymä on toteutettu. Suora automaattinen yhteys ChatGPT:n ja sovelluksen välillä jää jatkokehitykseen.
+
+```mermaid
+flowchart TD
+    A["ChatGPT:n työpaikkavahti"] --> B["JobTrackin tuontirajapinta"]
+    B --> C["Ilmoituksen validointi"]
+    C --> D{"Onko ilmoitus jo tallennettu?"}
+    D -- Ei --> E["MariaDB: uusi työpaikka"]
+    D -- Kyllä --> F["Ohitetaan duplikaatti"]
+    E --> G["React: Löydetyt työpaikat"]
+    G --> H["Käyttäjä valitsee kiinnostavat"]
+    H --> I["Omat hakemukset"]
+```
 
 Tuonti käyttöliittymässä:
 
@@ -58,7 +71,7 @@ Reitti `GET /api/health` palauttaa JSON-vastauksen `{"status":"ok"}`. Sen toimin
 
 Työskentelyohjeet ovat tiedostossa `AGENTS.md`. Kehitysympäristössä on käytössä Node.js 24 nvm:n kautta. Docker-palveluun on saatu yhteys komennolla `docker info --format '{{.ServerVersion}}'`.
 
-Kehityksen MariaDB-palvelu toimii Dockerissa, ja sen asetukset ovat tiedostossa `docker-compose.dev.yml`. Tietokannassa ovat `users`- ja `jobs`-taulut. Niiden suunniteltu rakenne on tallennettu tiedostoon `backend/schema.sql`.
+Kehityksen MariaDB-palvelu toimii Dockerissa, ja sen asetukset ovat tiedostossa `docker-compose.dev.yml`. Tietokannassa ovat `users`- ja `jobs`-taulut. Niiden rakenne on tallennettu tiedostoon `backend/schema.sql`.
 
 `backend/db.js` määrittelee mysql2-yhteyspoolin ja tarkistaa tarvittavien ympäristömuuttujien olemassaolon sekä portin kelvollisuuden. Komento `npm run db:check` on onnistunut: Node.js sai yhteyden tietokantaan sovelluksen tunnuksella ja pystyi suorittamaan lukukyselyn molempiin tauluihin palauttamatta käyttäjätietoja. Tämä ei vielä varmista kaikkia sarakkeita tai tietokantarajoitteita.
 
@@ -77,6 +90,143 @@ Frontend on toteutettu Reactilla ja Vitellä. Siinä ovat kirjautumis- ja rekist
 Käyttöliittymässä on tilasuodatus sekä järjestysvalinnat Uusimmat ensin ja Prioriteetti: korkea ensin. Niiden toiminta on vahvistettu selaimessa myös työpaikan lisäämisen ja muokkaamisen yhteydessä.
 
 Koko sovellus toimii Docker Composella osoitteessa `http://localhost`. Nginx tarjoaa rakennetun React-käyttöliittymän ja välittää `/api/`-pyynnöt Expressille. Frontend, backend ja MariaDB toimivat omissa konteissaan. Konttien käynnistyminen, tietokantayhteys, Nginxin asetukset ja API-välitys on tarkistettu, ja opiskelija on vahvistanut sovelluksen toimivan selaimessa.
+
+## Vaatimusten toteutuminen
+
+Työ perustuu varsinaiseen Full Stack -harjoitustyön tehtävänantoon. Harjoitustehtävä 8 on ollut tukimateriaalia.
+
+| Tehtävänannon vaatimus | Toteutus |
+| --- | --- |
+| React | Kirjautuminen, työpaikkalomake, listaus ja JSON-tuonti |
+| Node.js tai Python | Node.js ja Express |
+| MariaDB | Käyttäjät ja heille kuuluvat työpaikat |
+| Kirjautuminen | Rekisteröityminen, bcrypt-salasanatiivisteet ja JWT-autentikointi |
+| CRUD ja REST API | Käyttäjäkohtainen työpaikkojen lisäys, haku, päivitys ja poisto |
+| Dokumentaatio | Tämä README: rakenne, rajapinta, tietomalli, käynnistys ja testaus |
+| Testaus | JWT-testit, MariaDB-integraatiotestit, lint, build ja kirjatut selainkokeet |
+| GitLab-repositorio | Palautuksessa varmistetaan viimeisimmän version saatavuus ja opettajan oikeudet |
+| Esittely | Palautukseen kuuluu lyhyt video; sen tekeminen on erillinen viimeistelyvaihe |
+
+## Arkkitehtuuri
+
+Selain suorittaa React-käyttöliittymän. Käyttöliittymä lähettää `fetch`-pyyntöjä suhteellisiin `/api`-osoitteisiin. Konttikäynnistyksessä Nginx tarjoaa frontendin tiedostot ja välittää API-pyynnöt Expressille. Express tarkistaa autentikoinnin ja syötteet sekä käyttää MariaDB:tä mysql2-yhteyspoolin kautta.
+
+```mermaid
+flowchart TD
+    subgraph Browser ["Selain"]
+        ReactApp["React-käyttöliittymä (SPA)"]
+    end
+
+    subgraph Docker ["Docker Compose -konttiympäristö"]
+        Nginx["Nginx (Reverse Proxy ja staattiset tiedostot)
+Julkaistu portti 80"]
+        Express["Express Backend (REST API)
+Sisäinen portti 3000"]
+        MariaDB[("MariaDB-tietokanta
+Sisäinen portti 3306")]
+        Volume[("Pysyvä tallennustila
+Volume: dbdata")]
+    end
+
+    ReactApp -- "GET / (staattinen sisältö)" --> Nginx
+    ReactApp -- "API-kutsut /api/* (Bearer JWT)" --> Nginx
+    Nginx -- "Välitys porttiin 3000" --> Express
+    Express -- "Parametrisoidut SQL-kyselyt" --> MariaDB
+    MariaDB <--> Volume
+```
+
+Kehityksessä Vite tarjoaa käyttöliittymän portissa 5173 ja välittää API-pyynnöt paikalliselle Expressille porttiin 3000. Koko sovelluksen konttikäynnistyksessä selaimelle julkaistaan Nginxin portti 80. Kehitysproxy ja Nginx pitävät käyttöliittymän ja API:n selaimen näkökulmasta samassa alkuperässä, joten nykyinen käyttöliittymä ei tarvitse erillistä CORS-konfiguraatiota.
+
+Frontend on yksi React-näkymä ilman erillistä reitityskirjastoa. `App` hallitsee istuntoa, palvelinpyyntöjä ja työpaikkalistaa. Lomake, listaus ja tuonnin esikatselu ovat omia komponenttejaan. Backendissä reitit on jaettu käyttäjätilin, työpaikkojen ja tuonnin mukaan. Validointi ja autentikointi ovat erillisissä moduuleissa. SQL-kyselyt tehdään reittimoduuleissa; erillistä ORM- tai palvelukerrosta ei ole lisätty tähän harjoitustyöhön.
+
+## Tietokanta ja taulujen suhde
+
+Yhdellä käyttäjällä voi olla nolla tai useita työpaikkoja. Jokainen työpaikka kuuluu yhdelle käyttäjälle. Yhteys muodostuu viiteavaimella `jobs.user_id`, joka viittaa kenttään `users.id`.
+
+```mermaid
+erDiagram
+    users ||--o{ jobs : "omistaa"
+
+    users {
+        int id PK
+        string username UK
+        string password_hash
+    }
+
+    jobs {
+        int id PK
+        int user_id FK
+        string company
+        string title
+        string location
+        string url
+        date deadline
+        string status
+        string priority
+        string match_level
+        string notes
+    }
+```
+
+| Taulu | Keskeiset tiedot ja rajoitteet |
+| --- | --- |
+| `users` | Automaattinen `id`, yksilöllinen `username` ja `password_hash` |
+| `jobs` | Automaattinen `id`, pakollinen omistaja `user_id`, yritys ja tehtävänimike sekä työnhaun tila, prioriteetti ja lisätiedot |
+
+Molemmat taulut käyttävät InnoDB-moottoria ja utf8mb4-merkistöä. Tila, prioriteetti ja sopivuusluokka on rajattu ENUM-arvoihin. `deadline` on DATE-kenttä, jotta siihen ei liity kellonaikaa tai aikavyöhykettä. Puuttuvat valinnaiset tiedot tallennetaan arvona `NULL`.
+
+Viiteavain estää olemattomaan käyttäjään viittaavan työpaikan tallentamisen. Käyttäjää, jolla on työpaikkoja, ei voi poistaa suoraan: automaattista ketjupoistoa ei ole määritelty. Sovelluksessa ei ole käyttäjätilin poistotoimintoa.
+
+Kehityksessä ja koko sovelluksen konttikäynnistyksessä tiedot säilyvät nimetyssä `dbdata`-volumessa. Automaattiset integraatiotestit käyttävät erillistä `jobtrack_test`-kantaa ja väliaikaista testikontin tallennustilaa.
+
+## Tietoturvaratkaisut ja rajaukset
+
+- Salasanat tallennetaan bcrypt-tiivisteinä. Salasanaa tai tiivistettä ei palauteta API-vastauksissa.
+- JWT:n allekirjoitus, algoritmi, vanhenemisaika ja käyttäjätunniste tarkistetaan ennen suojattujen reittien käsittelyä. Token säilytetään selaimessa vain Reactin muistissa.
+- Omistaja otetaan tarkistetusta tokenista. Työpaikkojen kyselyt rajataan käyttäjään, ja SQL-arvot välitetään parametreina.
+- Backend validoi syötteet myös silloin, kun käyttöliittymä on jo tarkistanut niitä. JSON-pyynnöillä on kokorajat.
+- Paikalliset salaisuudet ovat Gitin ulkopuolisissa `.env`-tiedostoissa. `.dockerignore` estää ympäristötiedostojen kopioinnin sovelluskuviin.
+- Konttikäynnistyksessä vain Nginxin portti julkaistaan koneelle. Backend käyttää sovelluksen tietokantatunnusta ja toimii kontissa ilman root-oikeuksia.
+
+Nykyinen Docker-konfiguraatio on paikallista HTTP-käyttöä varten. HTTPS:ää, kirjautumisyritysten rajoittamista, salasanan palautusta tai JWT-tokenien palvelinpuolista mitätöintiä ei ole toteutettu. Uloskirjautuminen tyhjentää paikallisen istunnon, mutta jo myönnetty token pysyy teknisesti voimassa vanhenemiseensa asti.
+
+## Projektin keskeinen kansiorakenne
+
+```text
+backend/
+  app.js                      Reitit ja yhteinen virheenkäsittely
+  server.js                   HTTP-palvelimen käynnistys
+  auth.js                     JWT-tokenit ja autentikointi
+  db.js                       MariaDB-yhteyspooli
+  check-db.js                 Tietokantayhteyden tarkistus
+  schema.sql                  Taulujen luonti
+  jobValidation.js            Työpaikkojen ja hakuehtojen validointi
+  jobImport.js                Tuonnin validointi ja esikatselutulokset
+  routes/                     Käyttäjätilin, työpaikkojen ja tuonnin reitit
+  test/                       JWT- ja integraatiotestit
+  Dockerfile                  Backendin ajokuva
+  .dockerignore               Rakennuksesta pois jätettävät tiedostot
+frontend/
+  src/
+    App.jsx                   Sovelluksen tila ja palvelinpyynnöt
+    JobForm.jsx               Lisäys- ja muokkauslomake
+    JobList.jsx               Työpaikkataulukko
+    JobImport.jsx             Tuontitiedoston valinta ja esikatselu
+    jobLabels.js              Yhteiset käyttöliittymätekstit
+    api.js                    HTTP-pyyntöjen apufunktio
+    index.css                 Tyylit
+  vite.config.js              Kehityspalvelin ja API-välitys
+  nginx.conf.template         Nginxin tiedostotarjoilu ja API-välitys
+  Dockerfile                  Reactin rakennus ja Nginxin ajokuva
+  .dockerignore               Rakennuksesta pois jätettävät tiedostot
+docker-compose.yml            Koko sovelluksen konttikäynnistys
+docker-compose.dev.yml        Kehityksen tietokanta
+docker-compose.test.yml       Erillinen testitietokanta
+.env.example                  Asetusmalli ilman salaisuuksia
+.env.test.example             Testiympäristön asetusmalli
+AGENTS.md                     Koodausavustimen työskentelyohjeet
+README.md                     Projektin dokumentaatio
+```
 
 ## REST API
 
@@ -593,3 +743,28 @@ Opiskelijan paikallisissa testiajoissa 11.10.2026 kaikki yhdeksän JWT-testiä j
 Tuonnin transaktion perumista kesken tallennuksen syntyvässä tietokantavirheessä ei ole vielä testattu erikseen. Virheellisen syötteen hylkääminen ennen kirjoituksia sekä rinnakkaisten tuontien toistojen esto on testattu.
 
 Autentikoinnin puuttuvien kenttien ja salasanan pituusrajojen automaattiset testit sekä frontendin testit toteutetaan myöhemmin. Nykyinen työpaikkojen testi ei vielä tarkista kenttien kaikkia hyväksyttyjä pituusrajoja.
+
+## CI/CD
+
+Repositoriossa ei tällä hetkellä ole `.gitlab-ci.yml`-tiedostoa. Testit, frontendin tarkistukset ja Docker-kuvien rakennus suoritetaan yllä kuvatuilla komennoilla. Automaattista käyttöönottoa ei ole toteutettu. CI/CD esiintyy opettajan dokumentaation esimerkkirakenteessa; annetussa varsinaisessa tehtävänannossa sille ei aseteta erillistä pakollista toteutusvaatimusta.
+
+## Palautus ja esittely
+
+Palautuksessa toimitetaan opettajalle oman GitLab-repositorion linkki ja annetaan opettajalle vähintään Developer-oikeudet. Ennen palautusta tarkistetaan, että viimeisimmät commitit on viety GitLabiin ja README vastaa palautettavaa versiota. Paikalliset salaisuudet, `node_modules`-hakemistot ja frontendin `dist` eivät kuulu palautettavaan lähdekoodiin.
+
+Lyhyessä esittelyvideossa voi näyttää seuraavat asiat:
+
+1. Sovelluksen tarkoitus sekä Reactin, Expressin, MariaDB:n ja Nginxin tehtävät.
+2. Käyttäjätilin luonti ja kirjautuminen.
+3. Työpaikan lisääminen, muokkaaminen, tilasuodatus ja prioriteettijärjestys.
+4. JSON-tiedoston esikatselu, valittujen rivien tallennus ja kaksoiskappaleiden tunnistus.
+5. Testityöpaikan poisto ja uloskirjautuminen.
+6. Testien suorituskomennot sekä Docker-käynnistys.
+
+Videossa käytetään testitietoja, eikä ympäristötiedostojen salaisuuksia näytetä. Videon valmistumista ja opettajan GitLab-oikeuksia ei ole vielä vahvistettu tämän dokumentaation yhteydessä.
+
+## Toteutuksen rajaus ja jatkokehitys
+
+Ensimmäinen versio kattaa käyttäjäkohtaisen työnhaun seurannan ja tiedostosta tehtävän JSON-tuonnin. Sovellus ei hae ilmoituksia automaattisesti eikä tarkista niiden ajantasaisuutta verkosta. Sama työpaikka eri URL-osoitteilla voi tulla tuoduksi useaan kertaan.
+
+Mahdollisia jatkokehityskohteita ovat frontendin automaattiset toimintatestit, laajempi virhetilanteiden testaus, GitLabin testipipeline ja julkisen käyttöönoton vaatimat asetukset. Näitä ei lasketa nykyisen version toteutetuiksi ominaisuuksiksi.
