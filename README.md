@@ -60,7 +60,11 @@ Rekisteröitymisen, kirjautumisen ja omien tietojen haun yhteistoimintaa testata
 
 Työpaikkojen käyttäjäkohtainen CRUD on toteutettu tiedostossa `backend/routes/jobRoutes.js`: lisääminen, listaus, yksittäisen työpaikan haku, muokkaaminen ja poistaminen. Rajapinta käsittelee yrityksen, tehtävänimikkeen, hakemuksen tilan, prioriteetin, sopivuusluokan, sijainnin, ilmoituksen URL-osoitteen, hakuajan ja muistiinpanot. Syötteiden validointi on erotettu tiedostoon `backend/jobValidation.js`. Kahden käyttäjän integraatiotesti varmistaa tallennetut tiedot, oletusarvot sekä sen, ettei toinen käyttäjä voi lukea, muokata tai poistaa toisen työpaikkaa.
 
-Frontend, listauksen suodatus ja prioriteettijärjestys sekä koko sovelluksen kontitus ovat vielä toteuttamatta.
+Backendin listaus tukee hakemuksen tilan mukaista suodatusta ja prioriteettijärjestystä. Myös niiden käyttäjäkohtainen rajaus on testattu.
+
+Frontendin ensimmäinen versio on toteutettu Reactilla ja Vitellä. Siinä ovat kirjautumislomake, omien työpaikkojen taulukko, listan päivitys ja paikallinen uloskirjautuminen. Opiskelija on vahvistanut kirjautumisen onnistuvan selaimessa. Frontendin lint-tarkistus ja tuotantoversion koostaminen ovat onnistuneet.
+
+Käyttöliittymän rekisteröityminen, työpaikkojen lisääminen, muokkaaminen ja poistaminen sekä suodatus- ja järjestysvalinnat ovat vielä toteuttamatta. Myös koko sovelluksen kontitus ja Nginx-asetukset tehdään myöhemmin.
 
 ## REST API
 
@@ -95,12 +99,25 @@ Kaikki työpaikkareitit edellyttävät otsaketta `Authorization: Bearer <token>`
 | Metodi ja polku | Toiminta | Onnistunut vastaus |
 | --- | --- | --- |
 | `POST /api/jobs` | Lisää työpaikan kirjautuneelle käyttäjälle | `201`, tallennettu työpaikka oliona |
-| `GET /api/jobs` | Listaa kirjautuneen käyttäjän työpaikat uusimman id:n mukaan ensin | `200`, taulukko työpaikkaolioita |
+| `GET /api/jobs` | Listaa kirjautuneen käyttäjän työpaikat; tukee tila- ja järjestysparametreja | `200`, taulukko työpaikkaolioita |
 | `GET /api/jobs/:id` | Hakee yhden oman työpaikan | `200`, työpaikka oliona |
 | `PUT /api/jobs/:id` | Korvaa oman työpaikan muokattavat tiedot | `200`, tallennettu työpaikka oliona |
 | `DELETE /api/jobs/:id` | Poistaa oman työpaikan | `200`, `{"message":"Työpaikka poistettu."}` |
 
-Työpaikkaolio sisältää kentät `id`, `company`, `title`, `status`, `priority`, `match_level`, `location`, `url`, `deadline` ja `notes`. Hakuaika palautetaan merkkijonona muodossa `YYYY-MM-DD` tai arvona `null`. Listan järjestäminen prioriteetin mukaan toteutetaan myöhemmin.
+Työpaikkaolio sisältää kentät `id`, `company`, `title`, `status`, `priority`, `match_level`, `location`, `url`, `deadline` ja `notes`. Hakuaika palautetaan merkkijonona muodossa `YYYY-MM-DD` tai arvona `null`.
+
+Listauksen kyselyparametrit:
+
+| Parametri | Sallitut arvot | Toiminta ilman parametria |
+| --- | --- | --- |
+| `status` | `interested`, `applied`, `interview`, `offer`, `rejected` | Kaikki oman käyttäjän tilat |
+| `sort` | `newest`, `priority` | `newest` |
+
+Järjestys `newest` tarkoittaa suurinta tunnistetta ensin (`id DESC`). Järjestys `priority` palauttaa ensin korkean, sitten normaalin ja lopuksi matalan prioriteetin työpaikat. Saman prioriteetin sisällä järjestys on `id DESC`.
+
+Esimerkiksi `GET /api/jobs?status=applied&sort=priority` palauttaa vain omat lähetetyt hakemukset prioriteettijärjestyksessä. Kelvollinen suodatin, jolla ei löydy työpaikkoja, palauttaa `200` ja tyhjän taulukon. Tuntemattomat parametrit, virheelliset tai tyhjät arvot sekä saman parametrin toistaminen palauttavat `400`.
+
+Kyselyparametrit tarkistetaan `validateJobQuery`-funktiolla. Tila välitetään SQL-kyselyyn parametrina, ja järjestys valitaan palvelinkoodissa määritellyistä SQL-lausekkeista. Käyttäjän tekstiä ei liitetä SQL-rakenteeseen. Omistajuusrajaus säilyy myös suodatetuissa ja järjestetyissä listauksissa.
 
 Polun `:id` tarkistetaan yhteisessä `router.param`-käsittelijässä. Sallittu muoto on positiivinen kokonaisluku välillä 1–4294967295 ilman etunollia. Virheellinen tunniste palauttaa `400` ennen tietokantakyselyä.
 
@@ -207,7 +224,55 @@ npm run dev
 
 Käynnistyskomento lataa repon juuren `.env`-tiedoston. Rekisteröityminen edellyttää käynnissä olevaa tietokantaa ja luotua `users`-taulua. Palvelin kuuntelee osoitteessa `http://localhost:3000`. Kehitystila käynnistää palvelimen uudelleen koodin muuttuessa. Palvelimen voi pysäyttää näppäinyhdistelmällä Ctrl+C.
 
+## Frontendin käynnistäminen kehityksessä
+
+Frontendin npm-komennot ajetaan `frontend/`-hakemistossa. Asenna riippuvuudet ensimmäisellä käyttökerralla repon juuresta:
+
+```sh
+cd frontend
+npm install
+```
+
+Luo ensimmäisellä käyttökerralla `frontend/.env` tiedoston `frontend/.env.example` pohjalta. Säilytä olemassa oleva asetustiedosto. Kehityspalvelimen asetus on:
+
+```dotenv
+API_PROXY_TARGET=http://127.0.0.1:3000
+```
+
+Frontendin ympäristötiedosto sisältää vain kehityksen API-välityksen osoitteen. Tietokantasalasanat ja JWT-allekirjoitusavain kuuluvat backendin asetuksiin repon juuren `.env`-tiedostossa. Frontendin paikallinen `.env` on suljettu pois versionhallinnasta.
+
+Pidä kehitystietokanta ja backend käynnissä. Käynnistä frontend omassa terminaalissaan `frontend/`-hakemistossa:
+
+```sh
+npm run dev
+```
+
+Avaa `http://localhost:5173`. Vite käyttää kiinteää porttia 5173 ja ilmoittaa virheestä, jos portti on varattu. Selain käyttää suhteellisia `/api`-osoitteita, ja Viten kehitysproxy välittää pyynnöt Expressille. Tuotannossa API-välityksen toteuttaa myöhemmin Nginx.
+
+### Frontendin rakenne ja istunto
+
+- `src/App.jsx` hallitsee kirjautumista, istuntoa, lataustilaa ja virheilmoituksia.
+- `src/JobList.jsx` näyttää yrityksen, tehtävän, tilan, prioriteetin ja hakuajan. Ilmoituksen URL näkyy tehtävänimikkeen linkkinä.
+- `src/api.js` tekee fetch-kutsut, lisää Bearer-tokenin ja välittää virheilmoitukset käyttöliittymään. Pyyntöjen aikaraja on 10 sekuntia.
+- `src/index.css` sisältää käyttöliittymän tyylit.
+- `vite.config.js` määrittelee React-lisäosan ja kehityksen API-välityksen.
+
+Kirjautumisen jälkeen sovellus hakee käyttäjän työpaikat ja näyttää työpaikkanäkymän. Token säilytetään vain Reactin muistissa, joten sivun uudelleenlataus palauttaa kirjautumisnäkymän. Uloskirjautuminen poistaa paikallisen tokenin ja työpaikkatiedot; se ei mitätöi jo myönnettyä tokenia palvelimella. Listan päivityksen palauttama `401` tyhjentää istunnon ja työpaikat.
+
 ## Testaus
+
+### Frontendin tarkistukset
+
+Aja `frontend/`-hakemistossa:
+
+```sh
+npm run lint
+npm run build
+```
+
+Nykyinen Vite-pohja käyttää linttaukseen Oxlintia. Opiskelijan paikallisessa ajossa 11.10.2026 tarkistus valmistui ilman varoituksia tai virheitä. Tuotantoversion koostaminen onnistui Vitellä 8.3.4 ja loi `frontend/dist/`-hakemiston. Myös Viten kehityspalvelin käynnistyi onnistuneesti.
+
+Opiskelija vahvisti kirjautumisen onnistuvan selaimessa. Väärän salasanan virheilmoituksen, listan päivityksen, uloskirjautumisen ja sivun uudelleenlatauksen käsintestien tulokset odottavat vielä vahvistusta. Lint- ja build-tarkistukset eivät yksin varmista käyttöliittymän toimintaa. Frontendin automaattisia toimintatestejä ei ole vielä toteutettu.
 
 ### Tietokantayhteyden tarkistus
 
@@ -353,9 +418,15 @@ Tiedosto `backend/test/jobs.integration.js` ajetaan samalla `npm run test:integr
 | Oman työpaikan poisto | `200`, eikä työpaikka enää näy listauksessa |
 | Poistetun työpaikan haku, muokkaus ja uusi poisto | `404` ja sama virheviesti kuin toisen käyttäjän työpaikasta |
 | Toisen käyttäjän tietue käsittelyketjun jälkeen | Säilyy ennallaan |
+| Oletusjärjestys ja `sort=newest` usealla työpaikalla | Sama lista, suurin tunniste ensin |
+| Suodatus tilalla `offer` | Vain oman käyttäjän kyseisen tilan työpaikat |
+| `sort=priority` suodatuksen kanssa ja ilman | Korkea, normaali, matala; saman prioriteetin sisällä suurin tunniste ensin |
+| Kelvollinen suodatus ilman osumia | `200` ja tyhjä taulukko |
+| Sama suodatus kahdella käyttäjällä | Kumpikin saa vain omat osumansa |
+| Tuntemattomat, tyhjät ja toistetut kyselyparametrit | `400` |
 
 Testi käyttää satunnaisia käyttäjätunnuksia. Siivouksessa poistetaan vain testin omat työpaikat ja käyttäjät. Työpaikat poistetaan ennen käyttäjiä tietokannan viiteavaimen vuoksi.
 
-Opiskelijan paikallisissa testiajoissa 11.10.2026 kaikki yhdeksän JWT-testiä ja kaksi integraatiotestiä läpäistiin, eikä epäonnistuneita testejä ollut. Työpaikkojen testi kattoi myös haun, muokkaamisen ja poistamisen. Kumpikin integraatiotesti sisältää useita tarkistuksia, mutta testityökalu laskee sen yhdeksi testiksi.
+Opiskelijan paikallisissa testiajoissa 11.10.2026 kaikki yhdeksän JWT-testiä ja kaksi integraatiotestiä läpäistiin, eikä epäonnistuneita testejä ollut. Työpaikkojen testi kattoi CRUD-toimintojen lisäksi tilasuodatuksen, prioriteettijärjestyksen ja kyselyparametrien validoinnin. Kumpikin integraatiotesti sisältää useita tarkistuksia, mutta testityökalu laskee sen yhdeksi testiksi.
 
-Autentikoinnin puuttuvien kenttien ja salasanan pituusrajojen automaattiset testit sekä frontendin testit toteutetaan myöhemmin. Nykyinen työpaikkojen testi ei vielä tarkista listan järjestystä usealla saman käyttäjän työpaikalla tai kenttien kaikkia hyväksyttyjä pituusrajoja.
+Autentikoinnin puuttuvien kenttien ja salasanan pituusrajojen automaattiset testit sekä frontendin testit toteutetaan myöhemmin. Nykyinen työpaikkojen testi ei vielä tarkista kenttien kaikkia hyväksyttyjä pituusrajoja.
