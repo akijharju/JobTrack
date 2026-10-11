@@ -34,11 +34,11 @@ Prioriteetti, sopivuusluokka ja hakemuksen tila ovat erillisiä tietoja. Esimerk
 - **Docker Compose** – sovelluksen palvelujen käynnistäminen ja hallinta kontteina.
 - **Nginx** – frontendin tiedostojen tarjoaminen selaimelle ja API-pyyntöjen välittäminen backendille.
 
-## Myöhempi laajennus
+## JSON-tuonti – toteutus kesken
 
 Perustoimintojen valmistuttua sovellukseen lisätään työpaikkojen tuonti JSON-tiedostosta. Tarkoituksena on tuoda ChatGPT:ssä käyttämäni työpaikkavahdin löytämiä työpaikkoja sovellukseen käsin siirrettävällä tiedostolla.
 
-Tuontiin suunnitellaan esikatselu, tallennettavien työpaikkojen valinta, tietojen validointi ja saman ilmoituksen toistuvan tuonnin käsittely. JSON-muoto sovitaan tietomallin suunnittelun yhteydessä. Suora automaattinen yhteys ChatGPT:n ja sovelluksen välillä jää jatkokehitykseen.
+Tuontimuodoksi on sovittu JSON-olio, jonka ainoa kenttä on 1–20 työpaikkaa sisältävä `jobs`-taulukko. Työpaikat käyttävät samoja kenttiä kuin tavallinen lisäys, mutta tuonnissa ilmoituksen URL-osoite on pakollinen. Backendin validointi ja esikatselu on toteutettu. Tallennus, tiedoston valinta ja esikatselun käyttöliittymä ovat vielä toteuttamatta. Suora automaattinen yhteys ChatGPT:n ja sovelluksen välillä jää jatkokehitykseen.
 
 ## Projektin nykytila
 
@@ -171,6 +171,36 @@ Tuntemattomat kentät, myös asiakkaan lähettämät `id` ja `user_id`, hylätä
 Työpaikan omistaja otetaan aina tarkistetusta tokenista. Listauksen parametrisoitu SQL-kysely rajaa rivit ehdolla `WHERE user_id = ?`. Käyttäjä, jolla ei ole työpaikkoja, saa vastaukseksi tyhjän taulukon `[]`.
 
 Virheellinen lisäyssyöte palauttaa `400`. Puuttuva tai virheellinen token johtaa `401`-vastaukseen. Sovelluksen yhteinen virheenkäsittely palauttaa rikkinäisestä JSON:sta `400`, liian suuresta pyynnöstä `413` ja odottamattomasta palvelinvirheestä `500`.
+
+### JSON-tuonnin esikatselu
+
+`POST /api/job-import/preview` vaatii Bearer-tokenin ja vastaanottaa JSON-sisällön, esimerkiksi:
+
+```json
+{
+  "jobs": [
+    {
+      "company": "Esimerkki Oy",
+      "title": "Kehittäjä",
+      "url": "https://example.com/jobs/developer"
+    }
+  ]
+}
+```
+
+`backend/jobImport.js` käyttää nykyistä `validateJob`-funktiota ja tarkistaa lisäksi tuonnin rakenteen, työpaikkamäärän ja pakollisen URL-osoitteen. `backend/routes/jobImportRoutes.js` hakee mahdolliset kaksoiskappaleet vain kirjautuneen käyttäjän työpaikoista. Esikatselu ei tallenna tai muuta työpaikkoja.
+
+Onnistunut vastaus sisältää `summary`-olion (`total`, `ready`, `invalid`, `duplicate`) ja `rows`-taulukon. Jokaisella rivillä on tiedoston järjestystä vastaava rivinumero `row`, tulos `status`, selite `message` sekä normalisoitu `job` tai virheellisellä rivillä `null`.
+
+| Rivin tulos | Merkitys |
+| --- | --- |
+| `ready` | Tiedot ovat kelvolliset eikä samaa URL-osoitetta löytynyt |
+| `invalid` | Työpaikan tiedoissa on virhe tai URL puuttuu |
+| `duplicate` | Sama URL on jo käyttäjän työpaikoissa tai tiedoston aiemmalla kelvollisella rivillä |
+
+URL-osoitteita verrataan täsmälleen merkkijonoina reunoilta poistettujen välilyöntien jälkeen. Eri osoitteissa julkaistua samaa työpaikkaa ei tunnisteta automaattisesti samaksi ilmoitukseksi. Toisen käyttäjän työpaikat eivät vaikuta tulokseen.
+
+Kelvollinen esikatselupyyntö palauttaa `200`, vaikka yksittäisillä riveillä olisi virheitä. Virheellinen rakenne, tyhjä taulukko tai yli 20 työpaikkaa palauttaa `400`. Ilman kelvollista tokenia vastaus on `401`. Tuontireitin JSON-raja on 256 KiB, ja sen ylitys palauttaa `413`; tavallisten reittien 16 KiB:n raja säilyy. Tuontireitit liitetään sovellukseen ennen yleistä JSON-käsittelijää, ja niiden autentikointi suoritetaan ennen tuontisisällön lukemista.
 
 ## Kehityksen ympäristöasetukset
 
@@ -506,9 +536,17 @@ Tiedosto `backend/test/jobs.integration.js` ajetaan samalla `npm run test:integr
 | Kelvollinen suodatus ilman osumia | `200` ja tyhjä taulukko |
 | Sama suodatus kahdella käyttäjällä | Kumpikin saa vain omat osumansa |
 | Tuntemattomat, tyhjät ja toistetut kyselyparametrit | `400` |
+| Tuonnin esikatselu ilman tokenia | `401` |
+| Esikatselun uudet, virheelliset ja toistuvat työpaikat | Oikeat rivitulokset ja yhteenvetomäärät |
+| Toisen käyttäjän tallentama sama URL | Ei merkitä käyttäjän omaksi kaksoiskappaleeksi |
+| Virheellinen tuontirakenne, tyhjä taulukko tai yli 20 työpaikkaa | `400` |
+| Tuontirivien kielletty omistajakenttä, virheellinen päivä, URL tai yritys | Rivin tulos `invalid` |
+| Kelvollinen 20 työpaikan tuonti, jonka koko ylittää 16 KiB | `200`, kaikki rivit valmiita tuotaviksi |
+| Yli 256 KiB:n tuontipyyntö | `413` |
+| Molempien käyttäjien tietueet esikatselujen jälkeen | Säilyvät muuttumattomina |
 
 Testi käyttää satunnaisia käyttäjätunnuksia. Siivouksessa poistetaan vain testin omat työpaikat ja käyttäjät. Työpaikat poistetaan ennen käyttäjiä tietokannan viiteavaimen vuoksi.
 
-Opiskelijan paikallisissa testiajoissa 11.10.2026 kaikki yhdeksän JWT-testiä ja kaksi integraatiotestiä läpäistiin, eikä epäonnistuneita testejä ollut. Työpaikkojen testi kattoi CRUD-toimintojen lisäksi tilasuodatuksen, prioriteettijärjestyksen ja kyselyparametrien validoinnin. Kumpikin integraatiotesti sisältää useita tarkistuksia, mutta testityökalu laskee sen yhdeksi testiksi.
+Opiskelijan paikallisissa testiajoissa 11.10.2026 kaikki yhdeksän JWT-testiä ja kaksi integraatiotestiä läpäistiin, eikä epäonnistuneita testejä ollut. Työpaikkojen testi kattoi CRUD-toimintojen lisäksi tilasuodatuksen, prioriteettijärjestyksen, kyselyparametrien validoinnin ja JSON-tuonnin esikatselun. Kumpikin integraatiotesti sisältää useita tarkistuksia, mutta testityökalu laskee sen yhdeksi testiksi. Esikatselun lisäämisen jälkeen myös Docker-kuvien uudelleenrakennus ja palvelujen terveystarkistukset onnistuivat opiskelijan ajossa.
 
 Autentikoinnin puuttuvien kenttien ja salasanan pituusrajojen automaattiset testit sekä frontendin testit toteutetaan myöhemmin. Nykyinen työpaikkojen testi ei vielä tarkista kenttien kaikkia hyväksyttyjä pituusrajoja.

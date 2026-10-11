@@ -574,4 +574,170 @@ test('job CRUD validates input and keeps user records separate', async () => {
     assert.equal(typeof response.body.error, 'string');
   }
 
+  // Give user A one saved URL to compare against the import preview.
+  const importJob = {
+    company: 'Tuontitesti Oy',
+    title: 'Kehittäjä',
+    url: 'https://example.com/jobs/import-existing',
+  };
+
+  const savedImportJob = await request('/api/jobs', {
+    method: 'POST',
+    token: tokenA,
+    body: importJob,
+  });
+
+  assert.equal(savedImportJob.status, 201);
+
+  // Include an existing URL, a new URL, a file duplicate and an invalid row.
+  const newImportJob = {
+    ...importJob,
+    url: 'https://example.com/jobs/import-new',
+  };
+
+  const importBody = {
+    jobs: [
+      importJob,
+      newImportJob,
+      { ...newImportJob, url: `  ${newImportJob.url}  ` },
+      { company: 'Puuttuva linkki Oy', title: 'Kehittäjä' },
+    ],
+  };
+
+  // Take snapshots after setup to prove that preview does not save records.
+  const beforePreviewA = await request('/api/jobs', { token: tokenA });
+  const beforePreviewB = await request('/api/jobs', { token: tokenB });
+
+  assert.equal(beforePreviewA.status, 200);
+  assert.equal(beforePreviewB.status, 200);
+
+  const anonymousPreview = await request('/api/job-import/preview', {
+    method: 'POST',
+    body: importBody,
+  });
+
+  assert.equal(anonymousPreview.status, 401);
+
+  const previewA = await request('/api/job-import/preview', {
+    method: 'POST',
+    token: tokenA,
+    body: importBody,
+  });
+
+  assert.equal(previewA.status, 200);
+  assert.deepEqual(previewA.body.summary, {
+    total: 4,
+    ready: 1,
+    invalid: 1,
+    duplicate: 2,
+  });
+
+  assert.deepEqual(
+    previewA.body.rows.map((row) => row.status),
+    ['duplicate', 'ready', 'duplicate', 'invalid']
+  );
+
+  // Valid rows contain the same defaults as ordinary job creation.
+  assert.equal(previewA.body.rows[1].job.status, 'interested');
+  assert.equal(previewA.body.rows[1].job.priority, 'normal');
+  assert.equal(previewA.body.rows[1].job.match_level, null);
+  assert.equal(previewA.body.rows[2].job.url, newImportJob.url);
+  assert.equal(previewA.body.rows[3].row, 4);
+  assert.equal(typeof previewA.body.rows[3].message, 'string');
+
+  // User A's saved URL must not count as an existing record for user B.
+  const previewB = await request('/api/job-import/preview', {
+    method: 'POST',
+    token: tokenB,
+    body: importBody,
+  });
+
+  assert.equal(previewB.status, 200);
+  assert.deepEqual(previewB.body.summary, {
+    total: 4,
+    ready: 2,
+    invalid: 1,
+    duplicate: 1,
+  });
+  assert.equal(previewB.body.rows[0].status, 'ready');
+
+  // Reject invalid document structures and batches above the agreed limit.
+  const invalidImports = [
+    {},
+    [],
+    { jobs: [] },
+    { jobs: 'wrong type' },
+    { jobs: [importJob], user_id: users[1].id },
+    { jobs: Array.from({ length: 21 }, () => importJob) },
+  ];
+
+  for (const body of invalidImports) {
+    const response = await request('/api/job-import/preview', {
+      method: 'POST',
+      token: tokenA,
+      body,
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(typeof response.body.error, 'string');
+  }
+
+  // Keep row validation active even when the document itself is valid.
+  const invalidRows = await request('/api/job-import/preview', {
+    method: 'POST',
+    token: tokenA,
+    body: {
+      jobs: [
+        { ...newImportJob, user_id: users[1].id },
+        { ...newImportJob, deadline: '2026-02-30' },
+        { ...newImportJob, url: 'javascript:alert(1)' },
+        { ...newImportJob, company: ' ' },
+      ],
+    },
+  });
+
+  assert.equal(invalidRows.status, 200);
+  assert.equal(invalidRows.body.summary.invalid, 4);
+  assert.equal(invalidRows.body.summary.ready, 0);
+
+  // Accept a valid import above the ordinary 16 KiB request limit.
+  const largerImport = {
+    jobs: Array.from({ length: 20 }, (_, index) => ({
+      ...importJob,
+      url: `https://example.com/jobs/import-large-${index}`,
+      notes: 'a'.repeat(1000),
+    })),
+  };
+
+  assert.ok(Buffer.byteLength(JSON.stringify(largerImport)) > 16 * 1024);
+
+  const largerPreview = await request('/api/job-import/preview', {
+    method: 'POST',
+    token: tokenA,
+    body: largerImport,
+  });
+
+  assert.equal(largerPreview.status, 200);
+  assert.equal(largerPreview.body.summary.ready, 20);
+
+  // Reject requests above the separate import body limit.
+  const oversizedPreview = await request('/api/job-import/preview', {
+    method: 'POST',
+    token: tokenA,
+    body: {
+      jobs: [{ ...importJob, notes: 'a'.repeat(256 * 1024) }],
+    },
+  });
+
+  assert.equal(oversizedPreview.status, 413);
+
+  // All preview requests must leave both users' saved records unchanged.
+  const afterPreviewA = await request('/api/jobs', { token: tokenA });
+  const afterPreviewB = await request('/api/jobs', { token: tokenB });
+
+  assert.equal(afterPreviewA.status, 200);
+  assert.equal(afterPreviewB.status, 200);
+  assert.deepEqual(afterPreviewA.body, beforePreviewA.body);
+  assert.deepEqual(afterPreviewB.body, beforePreviewB.body);
+
 });

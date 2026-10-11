@@ -1,10 +1,14 @@
 const express = require('express');
 const authRoutes = require('./routes/authRoutes');
 const jobRoutes = require('./routes/jobRoutes');
+const jobImportRoutes = require('./routes/jobImportRoutes');
 
 const app = express();
 
-// Read JSON data before handling requests. Limit the body size to 16 KB.
+// Imports check authentication and use their own larger JSON limit.
+app.use('/api/job-import', jobImportRoutes);
+
+// Keep the smaller body limit for ordinary application requests.
 app.use(express.json({ limit: '16kb' }));
 
 // Check that the API responds. This does not check the database.
