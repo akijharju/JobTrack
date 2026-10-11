@@ -38,7 +38,7 @@ Prioriteetti, sopivuusluokka ja hakemuksen tila ovat erillisiä tietoja. Esimerk
 
 Perustoimintojen valmistuttua sovellukseen lisätään työpaikkojen tuonti JSON-tiedostosta. Tarkoituksena on tuoda ChatGPT:ssä käyttämäni työpaikkavahdin löytämiä työpaikkoja sovellukseen käsin siirrettävällä tiedostolla.
 
-Tuontimuodoksi on sovittu JSON-olio, jonka ainoa kenttä on 1–20 työpaikkaa sisältävä `jobs`-taulukko. Työpaikat käyttävät samoja kenttiä kuin tavallinen lisäys, mutta tuonnissa ilmoituksen URL-osoite on pakollinen. Backendin validointi ja esikatselu on toteutettu. Tallennus, tiedoston valinta ja esikatselun käyttöliittymä ovat vielä toteuttamatta. Suora automaattinen yhteys ChatGPT:n ja sovelluksen välillä jää jatkokehitykseen.
+Tuontimuodoksi on sovittu JSON-olio, jonka ainoa kenttä on 1–20 työpaikkaa sisältävä `jobs`-taulukko. Työpaikat käyttävät samoja kenttiä kuin tavallinen lisäys, mutta tuonnissa ilmoituksen URL-osoite on pakollinen. Backendin validointi, esikatselu ja tallennus on toteutettu. Tiedoston valinta ja tuonnin käyttöliittymä ovat vielä toteuttamatta. Suora automaattinen yhteys ChatGPT:n ja sovelluksen välillä jää jatkokehitykseen.
 
 ## Projektin nykytila
 
@@ -201,6 +201,23 @@ Onnistunut vastaus sisältää `summary`-olion (`total`, `ready`, `invalid`, `du
 URL-osoitteita verrataan täsmälleen merkkijonoina reunoilta poistettujen välilyöntien jälkeen. Eri osoitteissa julkaistua samaa työpaikkaa ei tunnisteta automaattisesti samaksi ilmoitukseksi. Toisen käyttäjän työpaikat eivät vaikuta tulokseen.
 
 Kelvollinen esikatselupyyntö palauttaa `200`, vaikka yksittäisillä riveillä olisi virheitä. Virheellinen rakenne, tyhjä taulukko tai yli 20 työpaikkaa palauttaa `400`. Ilman kelvollista tokenia vastaus on `401`. Tuontireitin JSON-raja on 256 KiB, ja sen ylitys palauttaa `413`; tavallisten reittien 16 KiB:n raja säilyy. Tuontireitit liitetään sovellukseen ennen yleistä JSON-käsittelijää, ja niiden autentikointi suoritetaan ennen tuontisisällön lukemista.
+
+### JSON-tuonnin tallennus
+
+`POST /api/job-import/save` vastaanottaa valitut työpaikat samassa `{"jobs":[...]}`-muodossa kuin esikatselu ja vaatii Bearer-tokenin. Backend tarkistaa tiedot uudelleen. Jos yksikin valittu rivi on virheellinen, vastaus on `400`, eikä mitään tallenneta. Vastauksen `rows` sisältää virheellisten rivien numerot ja selitteet. Numerot viittaavat tallennuspyynnön järjestykseen.
+
+Tallennus käyttää yhtä tietokantayhteyttä ja transaktiota. Käyttäjän rivi lukitaan komennolla `SELECT ... FOR UPDATE` ennen URL-hakua, joten saman käyttäjän samanaikaiset tuonnit käsitellään vuorotellen. Kaksoiskappaleet tarkistetaan uudelleen tallennushetkellä ja ohitetaan muuttamatta vanhoja työpaikkoja. Tietokantavirheessä transaktion kirjoitukset perutaan. Tämä toistojen esto koskee JSON-tuontia; tavallinen lisäyslomake ei estä saman URL-osoitteen tallentamista.
+
+Onnistunut vastaus sisältää `summary`-olion (`total`, `imported`, `duplicate`) ja `rows`-taulukon. Tallennetun rivin tulos on `imported`, ja sen `job` sisältää luodun tunnisteen. Ohitetun rivin tulos on `duplicate`.
+
+| Status | Merkitys |
+| --- | --- |
+| `201` | Vähintään yksi uusi työpaikka tallennettiin |
+| `200` | Kaikki rivit olivat kaksoiskappaleita; mitään ei muutettu |
+| `400` | Virheellinen rakenne tai työpaikkatiedot |
+| `401` | Kelvollinen kirjautuminen puuttuu tai käyttäjätiliä ei enää ole |
+| `413` | Tuontipyynnön 256 KiB:n kokoraja ylittyy |
+| `500` | Odottamaton palvelinvirhe |
 
 ## Kehityksen ympäristöasetukset
 
@@ -544,9 +561,19 @@ Tiedosto `backend/test/jobs.integration.js` ajetaan samalla `npm run test:integr
 | Kelvollinen 20 työpaikan tuonti, jonka koko ylittää 16 KiB | `200`, kaikki rivit valmiita tuotaviksi |
 | Yli 256 KiB:n tuontipyyntö | `413` |
 | Molempien käyttäjien tietueet esikatselujen jälkeen | Säilyvät muuttumattomina |
+| Tuonnin tallennus ilman tokenia | `401` |
+| Tallennuserässä kelvollinen ja virheellinen rivi | `400`, eikä kelvollistakaan riviä tallenneta |
+| Tallennuksen virheellinen tiedostorakenne tai työpaikkamäärä | `400` |
+| Uusi URL sekä tietokannan ja tiedoston kaksoiskappaleet | `201`, vain uusi työpaikka tallennetaan |
+| Saman tuonnin toistaminen | `200`, kaikki rivit ohitetaan |
+| Aiemman URL:n tuonti muutetulla nimikkeellä ja prioriteetilla | Vanhan työpaikan tiedot säilyvät |
+| Sama URL toisella käyttäjällä | Tallentuu omaksi työpaikaksi eri tunnisteella |
+| Kaksi samanaikaista tuontia samalla käyttäjällä ja URL:lla | Vastaukset `201` ja `200`, tietokantaan syntyy yksi työpaikka |
 
 Testi käyttää satunnaisia käyttäjätunnuksia. Siivouksessa poistetaan vain testin omat työpaikat ja käyttäjät. Työpaikat poistetaan ennen käyttäjiä tietokannan viiteavaimen vuoksi.
 
-Opiskelijan paikallisissa testiajoissa 11.10.2026 kaikki yhdeksän JWT-testiä ja kaksi integraatiotestiä läpäistiin, eikä epäonnistuneita testejä ollut. Työpaikkojen testi kattoi CRUD-toimintojen lisäksi tilasuodatuksen, prioriteettijärjestyksen, kyselyparametrien validoinnin ja JSON-tuonnin esikatselun. Kumpikin integraatiotesti sisältää useita tarkistuksia, mutta testityökalu laskee sen yhdeksi testiksi. Esikatselun lisäämisen jälkeen myös Docker-kuvien uudelleenrakennus ja palvelujen terveystarkistukset onnistuivat opiskelijan ajossa.
+Opiskelijan paikallisissa testiajoissa 11.10.2026 kaikki yhdeksän JWT-testiä ja kaksi integraatiotestiä läpäistiin, eikä epäonnistuneita testejä ollut. Työpaikkojen testi kattoi CRUD-toimintojen lisäksi tilasuodatuksen, prioriteettijärjestyksen, kyselyparametrien validoinnin sekä JSON-tuonnin esikatselun ja tallennuksen. Kumpikin integraatiotesti sisältää useita tarkistuksia, mutta testityökalu laskee sen yhdeksi testiksi. Tuonnin tallennuksen lisäämisen jälkeen myös Docker-kuvien uudelleenrakennus ja kaikkien kolmen palvelun terveystarkistukset onnistuivat opiskelijan ajossa.
+
+Tuonnin transaktion perumista kesken tallennuksen syntyvässä tietokantavirheessä ei ole vielä testattu erikseen. Virheellisen syötteen hylkääminen ennen kirjoituksia sekä rinnakkaisten tuontien toistojen esto on testattu.
 
 Autentikoinnin puuttuvien kenttien ja salasanan pituusrajojen automaattiset testit sekä frontendin testit toteutetaan myöhemmin. Nykyinen työpaikkojen testi ei vielä tarkista kenttien kaikkia hyväksyttyjä pituusrajoja.

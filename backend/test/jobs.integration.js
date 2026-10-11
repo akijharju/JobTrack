@@ -740,4 +740,211 @@ test('job CRUD validates input and keeps user records separate', async () => {
   assert.deepEqual(afterPreviewA.body, beforePreviewA.body);
   assert.deepEqual(afterPreviewB.body, beforePreviewB.body);
 
+
+  // Reuse the preview fixtures: one saved URL and one new URL.
+  const saveBody = {
+    jobs: [
+      importJob,
+      newImportJob,
+      { ...newImportJob, url: ` ${newImportJob.url} ` },
+    ],
+  };
+
+  const anonymousSave = await request('/api/job-import/save', {
+    method: 'POST',
+    body: saveBody,
+  });
+
+  assert.equal(anonymousSave.status, 401);
+
+  // Reject an invalid selection without saving its otherwise valid row.
+  const rejectedJob = {
+    ...importJob,
+    url: 'https://example.com/jobs/import-rejected-batch',
+  };
+
+  const rejectedSave = await request('/api/job-import/save', {
+    method: 'POST',
+    token: tokenA,
+    body: {
+      jobs: [
+        rejectedJob,
+        { ...newImportJob, user_id: users[1].id },
+      ],
+    },
+  });
+
+  assert.equal(rejectedSave.status, 400);
+  assert.equal(rejectedSave.body.rows[0].row, 2);
+
+  const afterRejectedSave = await request('/api/jobs', {
+    token: tokenA,
+  });
+
+  assert.equal(afterRejectedSave.status, 200);
+  assert.deepEqual(afterRejectedSave.body, afterPreviewA.body);
+
+  // Shared document rules must also protect the save endpoint.
+  for (const body of invalidImports) {
+    const response = await request('/api/job-import/save', {
+      method: 'POST',
+      token: tokenA,
+      body,
+    });
+
+    assert.equal(response.status, 400);
+  }
+
+  // Save only the new URL and skip both kinds of duplicate.
+  const firstSave = await request('/api/job-import/save', {
+    method: 'POST',
+    token: tokenA,
+    body: saveBody,
+  });
+
+  assert.equal(firstSave.status, 201);
+  assert.deepEqual(firstSave.body.summary, {
+    total: 3,
+    imported: 1,
+    duplicate: 2,
+  });
+
+  assert.deepEqual(
+    firstSave.body.rows.map((row) => row.status),
+    ['duplicate', 'imported', 'duplicate']
+  );
+
+  const importedJob = firstSave.body.rows[1].job;
+
+  assert.ok(Number.isSafeInteger(importedJob.id));
+  assert.ok(importedJob.id > 0);
+  assert.equal(importedJob.url, newImportJob.url);
+  assert.equal(importedJob.status, 'interested');
+  assert.equal(importedJob.priority, 'normal');
+
+  // Confirm that the returned job was actually saved.
+  const savedJobList = await request('/api/jobs', {
+    token: tokenA,
+  });
+
+  assert.equal(savedJobList.status, 200);
+  assert.equal(
+    savedJobList.body.length,
+    afterPreviewA.body.length + 1
+  );
+  assert.deepEqual(
+    savedJobList.body.find((job) => job.id === importedJob.id),
+    importedJob
+  );
+
+  // Importing the same selection again must not create more records.
+  const repeatedSave = await request('/api/job-import/save', {
+    method: 'POST',
+    token: tokenA,
+    body: saveBody,
+  });
+
+  assert.equal(repeatedSave.status, 200);
+  assert.deepEqual(repeatedSave.body.summary, {
+    total: 3,
+    imported: 0,
+    duplicate: 3,
+  });
+
+  // Duplicate imports must not overwrite existing titles or priorities.
+  const changedDuplicate = await request('/api/job-import/save', {
+    method: 'POST',
+    token: tokenA,
+    body: {
+      jobs: [{
+        ...newImportJob,
+        title: 'Tätä ei saa tallentaa vanhan tilalle',
+        priority: 'high',
+      }],
+    },
+  });
+
+  assert.equal(changedDuplicate.status, 200);
+  assert.equal(changedDuplicate.body.summary.imported, 0);
+
+  const afterRepeatedSave = await request('/api/jobs', {
+    token: tokenA,
+  });
+
+  assert.equal(afterRepeatedSave.status, 200);
+  assert.deepEqual(afterRepeatedSave.body, savedJobList.body);
+
+  // A different user can import the same URL into their own collection.
+  const otherUserSave = await request('/api/job-import/save', {
+    method: 'POST',
+    token: tokenB,
+    body: { jobs: [newImportJob] },
+  });
+
+  assert.equal(otherUserSave.status, 201);
+  assert.equal(otherUserSave.body.summary.imported, 1);
+  assert.notEqual(
+    otherUserSave.body.rows[0].job.id,
+    importedJob.id
+  );
+
+  const otherUserList = await request('/api/jobs', {
+    token: tokenB,
+  });
+
+  assert.equal(otherUserList.status, 200);
+  assert.equal(
+    otherUserList.body.length,
+    afterPreviewB.body.length + 1
+  );
+  assert.equal(
+    otherUserList.body.some((job) => job.id === importedJob.id),
+    false
+  );
+
+  // Start two imports together to test the per-user transaction lock.
+  const parallelBody = {
+    jobs: [{
+      ...importJob,
+      url: 'https://example.com/jobs/import-parallel',
+    }],
+  };
+
+  const parallelResults = await Promise.all([
+    request('/api/job-import/save', {
+      method: 'POST',
+      token: tokenA,
+      body: parallelBody,
+    }),
+    request('/api/job-import/save', {
+      method: 'POST',
+      token: tokenA,
+      body: parallelBody,
+    }),
+  ]);
+
+  assert.deepEqual(
+    parallelResults.map((result) => result.status).sort(),
+    [200, 201]
+  );
+
+  assert.deepEqual(
+    parallelResults
+      .map((result) => result.body.summary.imported)
+      .sort(),
+    [0, 1]
+  );
+
+  // The database must contain exactly one record from the parallel requests.
+  const afterParallelSave = await request('/api/jobs', {
+    token: tokenA,
+  });
+
+  assert.equal(afterParallelSave.status, 200);
+  assert.equal(
+    afterParallelSave.body.filter(
+      (job) => job.url === parallelBody.jobs[0].url
+    ).length,
+    1
+  );
 });
