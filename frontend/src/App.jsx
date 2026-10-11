@@ -20,30 +20,50 @@ export default function App() {
   // Disable controls while a request is running.
   const [isBusy, setIsBusy] = useState(false)
 
-  async function handleLogin(event) {
-    // Handle the form in React without reloading the page.
+  // Switch between login and registration without leaving the page.
+  const [isRegistering, setIsRegistering] = useState(false)
+
+  async function handleAuth(event) {
+    // Handle submission in React without reloading the page.
     event.preventDefault()
 
     if (isBusy) return
 
-    // Read the values before the form fields become disabled.
+    // Read the credentials before the inputs become disabled.
     const form = event.currentTarget
     const formData = new FormData(form)
+    const credentials = {
+      username: formData.get('username'),
+      password: formData.get('password'),
+    }
 
     setError('')
     setNotice('')
     setIsBusy(true)
 
     try {
+      if (isRegistering) {
+        // The backend validates the input and hashes the password.
+        const user = await apiRequest('/auth/register', {
+          method: 'POST',
+          body: credentials,
+        })
+
+        // Registration creates an account but does not return a login token.
+        form.reset()
+        setIsRegistering(false)
+        setNotice(`Tunnus ${user.username} luotiin. Kirjaudu sisään.`)
+
+        // Stop here so account creation does not also attempt a login.
+        return
+      }
+
       const login = await apiRequest('/auth/login', {
         method: 'POST',
-        body: {
-          username: formData.get('username'),
-          password: formData.get('password'),
-        },
+        body: credentials,
       })
 
-      // The backend uses this token to select the user's own records.
+      // Fetch private records using the token returned by the backend.
       const ownJobs = await apiRequest('/jobs', {
         token: login.token,
       })
@@ -53,11 +73,23 @@ export default function App() {
       setJobs(ownJobs)
       setSession(login)
     } catch (requestError) {
+      // Show backend errors, such as an existing username, above the form.
       setError(requestError.message)
     } finally {
-      // Allow another attempt after both success and failure.
+      // This also runs after the return in the registration branch.
       setIsBusy(false)
     }
+  }
+
+  function changeAuthMode() {
+    // Do not switch forms while a login or registration request is running.
+    if (isBusy) return
+
+    setIsRegistering((currentMode) => !currentMode)
+
+    // Old messages may no longer describe the newly selected form.
+    setError('')
+    setNotice('')
   }
 
   // Handle failures from requests that require a logged-in user.
@@ -230,31 +262,72 @@ export default function App() {
       {notice && <p className="notice" role="status">{notice}</p>}
 
       {!session ? (
-        <section className="login-panel" aria-labelledby="login-heading">
-          <h2 id="login-heading">Kirjaudu sisään</h2>
+        <section className="login-panel" aria-labelledby="auth-heading">
+          <h2 id="auth-heading">
+            {isRegistering ? 'Luo käyttäjätili' : 'Kirjaudu sisään'}
+          </h2>
 
-          <form onSubmit={handleLogin}>
+          {/* A changed key clears credentials when the form mode changes. */}
+          <form
+            key={isRegistering ? 'register' : 'login'}
+            onSubmit={handleAuth}
+          >
             <label htmlFor="username">Käyttäjätunnus</label>
             <input
               id="username"
               name="username"
               autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              aria-describedby={isRegistering ? 'username-help' : undefined}
               required
               disabled={isBusy}
             />
+
+            {/* Show account rules when the user is choosing new credentials. */}
+            {isRegistering && (
+              <p id="username-help">
+                Käytä 3–30 merkkiä: kirjaimia a–z, numeroita tai alaviivaa.
+                Isot kirjaimet muutetaan pieniksi.
+              </p>
+            )}
 
             <label htmlFor="password">Salasana</label>
             <input
               id="password"
               name="password"
               type="password"
-              autoComplete="current-password"
+              autoComplete={isRegistering ? 'new-password' : 'current-password'}
+              aria-describedby={isRegistering ? 'password-help' : undefined}
               required
               disabled={isBusy}
             />
 
+            {/* The backend measures the byte limit because Unicode sizes vary. */}
+            {isRegistering && (
+              <p id="password-help">
+                Vähintään 8 merkkiä ja enintään 72 tavua.
+                Erikoismerkit ja emojit voivat käyttää useita tavuja.
+              </p>
+            )}
+
             <button type="submit" disabled={isBusy}>
-              {isBusy ? 'Kirjaudutaan…' : 'Kirjaudu sisään'}
+              {isBusy
+                ? 'Odota…'
+                : isRegistering
+                  ? 'Luo käyttäjätili'
+                  : 'Kirjaudu sisään'}
+            </button>
+
+            {/* This button changes the form mode without submitting credentials. */}
+            <button
+              type="button"
+              onClick={changeAuthMode}
+              disabled={isBusy}
+            >
+              {isRegistering
+                ? 'Takaisin kirjautumiseen'
+                : 'Ei tunnusta? Luo käyttäjätili'}
             </button>
           </form>
         </section>

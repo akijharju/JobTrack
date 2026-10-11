@@ -62,9 +62,9 @@ Työpaikkojen käyttäjäkohtainen CRUD on toteutettu tiedostossa `backend/route
 
 Backendin listaus tukee hakemuksen tilan mukaista suodatusta ja prioriteettijärjestystä. Myös niiden käyttäjäkohtainen rajaus on testattu.
 
-Frontend on toteutettu Reactilla ja Vitellä. Siinä ovat kirjautumislomake, omien työpaikkojen taulukko, yhteinen lisäys- ja muokkauslomake, poisto vahvistuskyselyllä, listan päivitys ja paikallinen uloskirjautuminen. Kirjautuminen ja työpaikkojen CRUD-toiminnot on vahvistettu selaimessa. Frontendin lint-tarkistus ja tuotantoversion koostaminen ovat onnistuneet.
+Frontend on toteutettu Reactilla ja Vitellä. Siinä ovat kirjautumis- ja rekisteröitymislomake, omien työpaikkojen taulukko, yhteinen lisäys- ja muokkauslomake, poisto vahvistuskyselyllä, listan päivitys ja paikallinen uloskirjautuminen. Rekisteröityminen, kirjautuminen ja työpaikkojen CRUD-toiminnot on vahvistettu selaimessa. Frontendin lint-tarkistus ja tuotantoversion koostaminen ovat onnistuneet.
 
-Käyttöliittymän rekisteröityminen sekä suodatus- ja järjestysvalinnat ovat vielä toteuttamatta. Myös koko sovelluksen kontitus ja Nginx-asetukset tehdään myöhemmin.
+Käyttöliittymän suodatus- ja järjestysvalinnat ovat vielä toteuttamatta. Myös koko sovelluksen kontitus ja Nginx-asetukset tehdään myöhemmin.
 
 ## REST API
 
@@ -251,13 +251,15 @@ Avaa `http://localhost:5173`. Vite käyttää kiinteää porttia 5173 ja ilmoitt
 
 ### Frontendin rakenne ja istunto
 
-- `src/App.jsx` hallitsee istuntoa, työpaikkalistaa, muokattavaa työpaikkaa, palvelinpyyntöjä sekä lataus- ja ilmoitustiloja.
+- `src/App.jsx` hallitsee kirjautumis- ja rekisteröitymislomaketta, istuntoa, työpaikkalistaa, muokattavaa työpaikkaa, palvelinpyyntöjä sekä lataus- ja ilmoitustiloja.
 - `src/JobForm.jsx` sisältää yhteisen lisäys- ja muokkauslomakkeen. Epäonnistunut tallennus säilyttää syötteet korjaamista varten, jos istunto on edelleen voimassa.
 - `src/JobList.jsx` näyttää yrityksen, tehtävän, tilan, prioriteetin ja hakuajan sekä muokkaus- ja poistopainikkeet. Ilmoituksen URL näkyy tehtävänimikkeen linkkinä.
 - `src/jobLabels.js` sisältää hakemuksen tilan, prioriteetin ja sopivuusluokan yhteiset käyttöliittymätekstit.
 - `src/api.js` tekee fetch-kutsut, lisää Bearer-tokenin ja välittää virheilmoitukset käyttöliittymään. Pyyntöjen aikaraja on 10 sekuntia.
 - `src/index.css` sisältää käyttöliittymän tyylit.
 - `vite.config.js` määrittelee React-lisäosan ja kehityksen API-välityksen.
+
+Kirjautumisnäkymän Luo käyttäjätili -painikkeella voi vaihtaa rekisteröitymiseen. Backend validoi tunnuksen ja salasanan, ja käyttöliittymä näyttää mahdolliset virheilmoitukset. Onnistunut rekisteröityminen palauttaa kirjautumislomakkeelle ja näyttää vahvistuksen. Kirjautuminen tehdään erikseen. Lomaketilan vaihtaminen tyhjentää syötteet ja vanhat ilmoitukset.
 
 Kirjautumisen jälkeen sovellus hakee käyttäjän työpaikat ja näyttää työpaikkanäkymän. Token säilytetään vain Reactin muistissa, joten sivun uudelleenlataus palauttaa kirjautumisnäkymän. Uloskirjautuminen poistaa paikallisen tokenin, työpaikkatiedot ja muokkaustilan; se ei mitätöi jo myönnettyä tokenia palvelimella. Työpaikkapyynnön palauttama `401` tyhjentää myös istunnon, työpaikat ja muokkaustilan.
 
@@ -283,8 +285,13 @@ Opiskelija vahvisti kirjautumisen onnistuvan selaimessa. Lisäksi seuraavat käy
 - Muokkauksen peruuttaminen tallennettuja tietoja muuttamatta.
 - Pelkistä välilyönneistä koostuvan yritysnimen hylkääminen: virheilmoitus näkyy ja syötteet säilyvät lomakkeella.
 - Poiston peruuttaminen ja testityöpaikan poistaminen vahvistuksen jälkeen.
+- Liian lyhyen salasanan virheilmoitus rekisteröitymisessä.
+- Uuden käyttäjän rekisteröityminen, vahvistusviesti ja paluu kirjautumislomakkeelle.
+- Uudella tunnuksella kirjautuminen ja tyhjä työpaikkalista.
+- Uloskirjautuminen ja saman tunnuksen uuden rekisteröintiyrityksen hylkääminen.
+- Syötteiden ja vanhojen ilmoitusten tyhjentyminen kirjautumis- ja rekisteröitymistilan välillä vaihdettaessa.
 
-Väärän salasanan virheilmoituksen, uloskirjautumisen ja sivun uudelleenlatauksen käsintestien tulokset odottavat vielä vahvistusta. Lint- ja build-tarkistukset eivät yksin varmista käyttöliittymän toimintaa. Frontendin automaattisia toimintatestejä ei ole vielä toteutettu.
+Väärän salasanan virheilmoituksen ja sivun uudelleenlatauksen käsintestien tulokset odottavat vielä vahvistusta. Lint- ja build-tarkistukset eivät yksin varmista käyttöliittymän toimintaa. Frontendin automaattisia toimintatestejä ei ole vielä toteutettu.
 
 ### Tietokantayhteyden tarkistus
 
