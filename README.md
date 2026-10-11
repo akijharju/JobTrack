@@ -64,7 +64,7 @@ Backendin listaus tukee hakemuksen tilan mukaista suodatusta ja prioriteettijär
 
 Frontend on toteutettu Reactilla ja Vitellä. Siinä ovat kirjautumis- ja rekisteröitymislomake, omien työpaikkojen taulukko, yhteinen lisäys- ja muokkauslomake, poisto vahvistuskyselyllä, listan päivitys ja paikallinen uloskirjautuminen. Rekisteröityminen, kirjautuminen ja työpaikkojen CRUD-toiminnot on vahvistettu selaimessa. Frontendin lint-tarkistus ja tuotantoversion koostaminen ovat onnistuneet.
 
-Käyttöliittymän suodatus- ja järjestysvalinnat ovat vielä toteuttamatta. Myös koko sovelluksen kontitus ja Nginx-asetukset tehdään myöhemmin.
+Käyttöliittymässä on tilasuodatus sekä järjestysvalinnat Uusimmat ensin ja Prioriteetti: korkea ensin. Niiden toiminta on vahvistettu selaimessa myös työpaikan lisäämisen ja muokkaamisen yhteydessä. Koko sovelluksen kontitus ja Nginx-asetukset tehdään myöhemmin.
 
 ## REST API
 
@@ -263,7 +263,9 @@ Kirjautumisnäkymän Luo käyttäjätili -painikkeella voi vaihtaa rekisteröity
 
 Kirjautumisen jälkeen sovellus hakee käyttäjän työpaikat ja näyttää työpaikkanäkymän. Token säilytetään vain Reactin muistissa, joten sivun uudelleenlataus palauttaa kirjautumisnäkymän. Uloskirjautuminen poistaa paikallisen tokenin, työpaikkatiedot ja muokkaustilan; se ei mitätöi jo myönnettyä tokenia palvelimella. Työpaikkapyynnön palauttama `401` tyhjentää myös istunnon, työpaikat ja muokkaustilan.
 
-Uusi työpaikka lisätään lomakkeella. Muokkaa-painike avaa valitun työpaikan tiedot samaan lomakkeeseen, ja Peruuta muokkaus palauttaa lisäystilaan tallentamatta muutoksia. Tallennuksen jälkeen lista päivittyy palvelimen palauttamilla tiedoilla. Poisto vaatii vahvistuksen, ja rivi poistuu listalta vasta onnistuneen palvelinpyynnön jälkeen.
+Uusi työpaikka lisätään lomakkeella. Muokkaa-painike avaa valitun työpaikan tiedot samaan lomakkeeseen, ja Peruuta muokkaus palauttaa lisäystilaan tallentamatta muutoksia. Tallennuksen jälkeen lista haetaan uudelleen nykyisillä suodatus- ja järjestysvalinnoilla. Jos tallennus onnistuu mutta listan haku epäonnistuu, käyttöliittymä ilmoittaa molemmista erikseen. Poisto vaatii vahvistuksen, ja rivi poistuu listalta vasta onnistuneen palvelinpyynnön jälkeen.
+
+Hakemuksen tila -valinta rajaa listaa backendin `status`-kyselyparametrilla. Kaikki tilat jättää parametrin pois. Järjestys-valinta käyttää `sort=newest`- tai `sort=priority`-parametria. Prioriteettijärjestys on korkea, normaali ja matala; saman prioriteetin sisällä uusin tunniste tulee ensin. Otsikon lukumäärä kertoo nykyisen hakutuloksen koon. Päivitä lista säilyttää valinnat, ja uusi kirjautuminen palauttaa oletukset Kaikki tilat ja Uusimmat ensin.
 
 ## Testaus
 
@@ -290,6 +292,10 @@ Opiskelija vahvisti kirjautumisen onnistuvan selaimessa. Lisäksi seuraavat käy
 - Uudella tunnuksella kirjautuminen ja tyhjä työpaikkalista.
 - Uloskirjautuminen ja saman tunnuksen uuden rekisteröintiyrityksen hylkääminen.
 - Syötteiden ja vanhojen ilmoitusten tyhjentyminen kirjautumis- ja rekisteröitymistilan välillä vaihdettaessa.
+- Tilasuodatus ja paluu kaikkien tilojen listaukseen.
+- Prioriteettijärjestys: korkea, normaali ja matala.
+- Lisäyksen ja muokkauksen vaikutus listaan nykyisen suodatuksen ja järjestyksen mukaisesti.
+- Valintojen säilyminen listan päivityksessä ja palautuminen oletuksiin uudessa kirjautumisessa.
 
 Väärän salasanan virheilmoituksen ja sivun uudelleenlatauksen käsintestien tulokset odottavat vielä vahvistusta. Lint- ja build-tarkistukset eivät yksin varmista käyttöliittymän toimintaa. Frontendin automaattisia toimintatestejä ei ole vielä toteutettu.
 

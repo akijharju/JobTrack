@@ -2,9 +2,9 @@ import { statusLabels, priorityLabels } from './jobLabels'
 
 // Show the jobs and let the parent handle editing and deletion.
 export default function JobList({ jobs, onEdit, onDelete, isBusy }) {
-  // Show a helpful message instead of an empty table.
+  // An empty result may mean that no jobs match the selected status.
   if (jobs.length === 0) {
-    return <p>Sinulla ei ole vielä tallennettuja työpaikkoja.</p>
+    return <p>Ei työpaikkoja näillä valinnoilla.</p>
   }
 
   return (

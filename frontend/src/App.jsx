@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { apiRequest } from './api'
 import JobForm from './JobForm'
 import JobList from './JobList'
+import { statusLabels } from './jobLabels'
 
 export default function App() {
   // Keep the session in memory; reloading the page requires a new login.
@@ -22,6 +23,12 @@ export default function App() {
 
   // Switch between login and registration without leaving the page.
   const [isRegistering, setIsRegistering] = useState(false)
+
+  // Keep the filter options that match the currently displayed list.
+  const [filters, setFilters] = useState({
+    status: '',
+    sort: 'newest',
+  })
 
   async function handleAuth(event) {
     // Handle submission in React without reloading the page.
@@ -71,6 +78,10 @@ export default function App() {
       // Open the main view only after both requests succeed.
       form.reset()
       setJobs(ownJobs)
+
+      // Each login starts with all jobs in the backend's default order.
+      setFilters({ status: '', sort: 'newest' })
+
       setSession(login)
     } catch (requestError) {
       // Show backend errors, such as an existing username, above the form.
@@ -104,7 +115,28 @@ export default function App() {
     setError(requestError.message)
   }
 
-  async function refreshJobs() {
+  async function loadJobs(nextFilters) {
+    // Build the query string without joining parameter values by hand.
+    const query = new URLSearchParams({
+      sort: nextFilters.sort,
+    })
+
+    // An omitted status means all statuses; an empty parameter is invalid.
+    if (nextFilters.status) {
+      query.set('status', nextFilters.status)
+    }
+
+    // The backend handles filtering, ordering and ownership checks.
+    const ownJobs = await apiRequest(`/jobs?${query.toString()}`, {
+      token: session.token,
+    })
+
+    // Change the list and its selected options only after a successful fetch.
+    setJobs(ownJobs)
+    setFilters(nextFilters)
+  }
+
+  async function refreshJobs(nextFilters = filters) {
     if (isBusy) return
 
     setError('')
@@ -112,13 +144,9 @@ export default function App() {
     setIsBusy(true)
 
     try {
-      // Replace the local list with the current records from the server.
-      const ownJobs = await apiRequest('/jobs', {
-        token: session.token,
-      })
-
-      setJobs(ownJobs)
+      await loadJobs(nextFilters)
     } catch (requestError) {
+      // Keep the previous list and options if the new request fails.
       showRequestError(requestError)
     } finally {
       setIsBusy(false)
@@ -149,7 +177,7 @@ export default function App() {
     setIsBusy(true)
 
     try {
-      // Use POST for a new job and PUT to replace an existing job's fields.
+      // Use the same form for creating and updating a job.
       const path = editingJob ? `/jobs/${editingJob.id}` : '/jobs'
       const method = editingJob ? 'PUT' : 'POST'
 
@@ -159,25 +187,40 @@ export default function App() {
         body,
       })
 
-      // Use the server's values, which include the ID and cleaned input.
-      setJobs((currentJobs) => (
-        editingJob
-          ? currentJobs.map((job) => (
-              job.id === savedJob.id ? savedJob : job
-            ))
-          : [savedJob, ...currentJobs]
-      ))
-
-      // Return to creation mode after a successful save.
+      // The write succeeded, so the editor can return to creation mode.
       setEditingJob(null)
-      setNotice('Työpaikka tallennettu.')
 
-      // Tell JobForm that it may clear the submitted values.
+      // Explain why a saved job may be absent from the filtered list.
+      const hiddenByFilter = (
+        filters.status && savedJob.status !== filters.status
+      )
+
+      setNotice(
+        hiddenByFilter
+          ? 'Työpaikka tallennettu. Nykyinen tilasuodatus rajaa sen pois listalta.'
+          : 'Työpaikka tallennettu.',
+      )
+
+      try {
+        // Fetch again so changed statuses and priorities appear correctly.
+        await loadJobs(filters)
+      } catch (requestError) {
+        if (requestError.status === 401) {
+          showRequestError(requestError)
+        } else {
+          // A failed refresh does not undo the successful database write.
+          setError(
+            'Tallennus onnistui, mutta lista ei päivittynyt. '
+            + 'Näkyvä lista voi olla vanhentunut. Paina Päivitä lista.',
+          )
+        }
+      }
+
+      // Clear the submitted form even if the later list refresh failed.
       return true
     } catch (requestError) {
+      // A failed write keeps the form values available for correction.
       showRequestError(requestError)
-
-      // Keep the entered values so the user can correct them or retry.
       return false
     } finally {
       setIsBusy(false)
@@ -344,18 +387,59 @@ export default function App() {
 
           <section aria-labelledby="jobs-heading">
             <div className="list-header">
-              <h2 id="jobs-heading">Työpaikat ({jobs.length})</h2>
+              {/* The count describes the current results, not all saved jobs. */}
+              <h2 id="jobs-heading">
+                Näytettävät työpaikat ({jobs.length})
+              </h2>
 
               <button
                 type="button"
-                onClick={refreshJobs}
+                onClick={() => refreshJobs()}
                 disabled={isBusy}
               >
                 {isBusy ? 'Odota…' : 'Päivitä lista'}
               </button>
             </div>
 
-            {/* The list calls these handlers without managing API requests. */}
+            <div className="job-filters">
+              <label>
+                Hakemuksen tila
+                <select
+                  value={filters.status}
+                  onChange={(event) => refreshJobs({
+                    ...filters,
+                    status: event.target.value,
+                  })}
+                  disabled={isBusy}
+                >
+                  <option value="">Kaikki tilat</option>
+
+                  {/* Reuse the same status names as the editing form. */}
+                  {Object.entries(statusLabels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Järjestys
+                <select
+                  value={filters.sort}
+                  onChange={(event) => refreshJobs({
+                    ...filters,
+                    sort: event.target.value,
+                  })}
+                  disabled={isBusy}
+                >
+                  <option value="newest">Uusimmat ensin</option>
+                  <option value="priority">Prioriteetti: korkea ensin</option>
+                </select>
+              </label>
+            </div>
+
+            {/* Editing and deletion still use the existing handlers. */}
             <JobList
               jobs={jobs}
               onEdit={startEditing}

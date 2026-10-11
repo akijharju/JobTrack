@@ -193,3 +193,17 @@ textarea {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Keep filter controls together and allow wrapping on small screens. */
+.job-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+/* Place the label above its selection control. */
+.job-filters label {
+  display: grid;
+  gap: 0.35rem;
+}
