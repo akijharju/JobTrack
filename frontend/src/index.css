@@ -115,3 +115,81 @@ td {
   border-bottom: 1px solid #dce2e8;
   text-align: left;
 }
+
+/* Keep space between the job form and the job list. */
+.workspace {
+  display: grid;
+  gap: 1.5rem;
+}
+
+/* Fit multiple columns when space allows and one column on small screens. */
+.job-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 1rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Place each label above its input. */
+.job-fields label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+/* Keep form controls inside their grid columns. */
+.job-fields input,
+.job-fields select,
+.job-fields textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Match selects and text areas with the existing input styles. */
+select,
+textarea {
+  font: inherit;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid #8797a5;
+  border-radius: 0.35rem;
+}
+
+/* Allow more writing space without stretching the form sideways. */
+textarea {
+  resize: vertical;
+}
+
+/* Let notes and form actions use the full width of the grid. */
+.full-width {
+  grid-column: 1 / -1;
+}
+
+/* Allow action buttons to wrap when horizontal space is limited. */
+.form-actions,
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Give successful actions a separate style from errors. */
+.notice {
+  padding: 1rem;
+  border: 1px solid #287a45;
+  border-radius: 0.35rem;
+  background: #edf8ef;
+  color: #205c35;
+}
+
+/* Hide text visually while keeping it available to screen readers. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
