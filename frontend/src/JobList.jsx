@@ -1,4 +1,4 @@
-import { statusLabels, priorityLabels } from './jobLabels'
+import { statusLabels, priorityLabels, matchLevelLabels } from './jobLabels'
 
 // Show the jobs and let the parent handle editing and deletion.
 export default function JobList({ jobs, onEdit, onDelete, isBusy }) {
@@ -18,6 +18,7 @@ export default function JobList({ jobs, onEdit, onDelete, isBusy }) {
             <th scope="col">Tehtävä</th>
             <th scope="col">Tila</th>
             <th scope="col">Prioriteetti</th>
+            <th scope="col">Sopivuus</th>
             <th scope="col">Hakuaika</th>
             <th scope="col">Toiminnot</th>
           </tr>
@@ -53,6 +54,8 @@ export default function JobList({ jobs, onEdit, onDelete, isBusy }) {
                 {/* Translate API values into Finnish display labels. */}
                 <td>{statusLabels[job.status]}</td>
                 <td>{priorityLabels[job.priority]}</td>
+                {/* A missing match level means that the job has not been assessed. */}
+                <td>{matchLevelLabels[job.match_level ?? '']}</td>
                 <td>{deadline}</td>
 
                 <td>

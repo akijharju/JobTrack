@@ -34,11 +34,21 @@ Prioriteetti, sopivuusluokka ja hakemuksen tila ovat erillisiä tietoja. Esimerk
 - **Docker Compose** – sovelluksen palvelujen käynnistäminen ja hallinta kontteina.
 - **Nginx** – frontendin tiedostojen tarjoaminen selaimelle ja API-pyyntöjen välittäminen backendille.
 
-## JSON-tuonti – toteutus kesken
+## JSON-tuonti
 
-Perustoimintojen valmistuttua sovellukseen lisätään työpaikkojen tuonti JSON-tiedostosta. Tarkoituksena on tuoda ChatGPT:ssä käyttämäni työpaikkavahdin löytämiä työpaikkoja sovellukseen käsin siirrettävällä tiedostolla.
+Sovellukseen voi tuoda työpaikkoja JSON-tiedostosta. Käytän tätä ChatGPT:ssä toimivan työpaikkavahtini löytämien ilmoitusten siirtämiseen käsin.
 
-Tuontimuodoksi on sovittu JSON-olio, jonka ainoa kenttä on 1–20 työpaikkaa sisältävä `jobs`-taulukko. Työpaikat käyttävät samoja kenttiä kuin tavallinen lisäys, mutta tuonnissa ilmoituksen URL-osoite on pakollinen. Backendin validointi, esikatselu ja tallennus on toteutettu. Tiedoston valinta ja tuonnin käyttöliittymä ovat vielä toteuttamatta. Suora automaattinen yhteys ChatGPT:n ja sovelluksen välillä jää jatkokehitykseen.
+Tuontimuoto on JSON-olio, jonka ainoa kenttä on 1–20 työpaikkaa sisältävä `jobs`-taulukko. Työpaikat käyttävät samoja kenttiä kuin tavallinen lisäys, mutta tuonnissa ilmoituksen URL-osoite on pakollinen. Tiedoston enimmäiskoko on 256 KiB. Backendin validointi, esikatselu ja tallennus sekä tuonnin käyttöliittymä on toteutettu. Suora automaattinen yhteys ChatGPT:n ja sovelluksen välillä jää jatkokehitykseen.
+
+Tuonti käyttöliittymässä:
+
+1. Kirjaudu sisään ja valitse JSON-tiedosto kohdassa Tuo työpaikkoja JSON-tiedostosta.
+2. Paina Näytä esikatselu. Tässä vaiheessa mitään ei tallenneta.
+3. Tarkista työpaikat ja avaa tarvittaessa Näytä työpaikan tiedot nähdäksesi myös muistiinpanot ja muut lisätiedot.
+4. Kelvolliset uudet työpaikat ovat valittuina. Poista valinta niistä, joita et halua tuoda. Virheellisiä rivejä ja kaksoiskappaleita ei voi valita.
+5. Paina Tallenna valitut. Sovellus ilmoittaa tallennettujen ja ohitettujen työpaikkojen määrät ja päivittää listan nykyisillä suodatusvalinnoilla.
+
+Korjaa virheelliset tiedot alkuperäiseen JSON-tiedostoon ja pyydä uusi esikatselu. Rikkinäinen JSON hylätään ennen esikatselupyyntöä. Jos kaikki rivit ovat virheellisiä tai kaksoiskappaleita, tallennuspainike on pois käytöstä. Tiedosto luetaan selaimessa ja sen sisältö lähetetään rajapinnalle JSONina; alkuperäistä tiedostoa ei tallenneta palvelimen levylle.
 
 ## Projektin nykytila
 
@@ -302,7 +312,8 @@ Avaa `http://localhost:5173`. Vite käyttää kiinteää porttia 5173 ja ilmoitt
 
 - `src/App.jsx` hallitsee kirjautumis- ja rekisteröitymislomaketta, istuntoa, työpaikkalistaa, muokattavaa työpaikkaa, palvelinpyyntöjä sekä lataus- ja ilmoitustiloja.
 - `src/JobForm.jsx` sisältää yhteisen lisäys- ja muokkauslomakkeen. Epäonnistunut tallennus säilyttää syötteet korjaamista varten, jos istunto on edelleen voimassa.
-- `src/JobList.jsx` näyttää yrityksen, tehtävän, tilan, prioriteetin ja hakuajan sekä muokkaus- ja poistopainikkeet. Ilmoituksen URL näkyy tehtävänimikkeen linkkinä.
+- `src/JobImport.jsx` näyttää tiedoston valinnan, esikatselun ja rivivalinnat. `App.jsx` lukee tiedoston, tekee tuontipyynnöt ja päivittää työpaikkalistan. Uloskirjautuminen poistaa tuonnin esikatselun ja valinnat näkymän mukana.
+- `src/JobList.jsx` näyttää yrityksen, tehtävän, tilan, prioriteetin, sopivuuden ja hakuajan sekä muokkaus- ja poistopainikkeet. Arvioimaton sopivuus näkyy tekstinä Ei arvioitu. Ilmoituksen URL näkyy tehtävänimikkeen linkkinä.
 - `src/jobLabels.js` sisältää hakemuksen tilan, prioriteetin ja sopivuusluokan yhteiset käyttöliittymätekstit.
 - `src/api.js` tekee fetch-kutsut, lisää Bearer-tokenin ja välittää virheilmoitukset käyttöliittymään. Pyyntöjen aikaraja on 10 sekuntia.
 - `src/index.css` sisältää käyttöliittymän tyylit.
@@ -400,6 +411,11 @@ Opiskelija vahvisti kirjautumisen onnistuvan selaimessa. Lisäksi seuraavat käy
 - Prioriteettijärjestys: korkea, normaali ja matala.
 - Lisäyksen ja muokkauksen vaikutus listaan nykyisen suodatuksen ja järjestyksen mukaisesti.
 - Valintojen säilyminen listan päivityksessä ja palautuminen oletuksiin uudessa kirjautumisessa.
+- Sopivuusluokan näyttäminen työpaikkataulukossa.
+- JSON-tuonnissa valittujen työpaikkojen tallentaminen.
+- Jo tuotujen työpaikkojen tunnistaminen kaksoiskappaleiksi uudessa esikatselussa.
+- Rikkinäisen JSON-tiedoston virheilmoitus.
+- Kolmen virheellisen tuontirivin hylkääminen: puuttuva URL, tyhjä yrityksen nimi ja mahdoton päivämäärä. Tallennuspainike pysyy pois käytöstä.
 
 Väärän salasanan virheilmoituksen ja sivun uudelleenlatauksen käsintestien tulokset odottavat vielä vahvistusta. Lint- ja build-tarkistukset eivät yksin varmista käyttöliittymän toimintaa. Frontendin automaattisia toimintatestejä ei ole vielä toteutettu.
 

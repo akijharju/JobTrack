@@ -3,6 +3,7 @@ import { apiRequest } from './api'
 import JobForm from './JobForm'
 import JobList from './JobList'
 import { statusLabels } from './jobLabels'
+import JobImport from './JobImport'
 
 export default function App() {
   // Keep the session in memory; reloading the page requires a new login.
@@ -167,6 +168,98 @@ export default function App() {
     setEditingJob(null)
     setError('')
     setNotice('')
+  }
+
+  async function previewImport(file) {
+    if (isBusy) return null
+
+    setError('')
+    setNotice('')
+    setIsBusy(true)
+
+    try {
+      // Check the size before reading the file into browser memory.
+      if (!(file instanceof File) || file.size === 0) {
+        throw new Error('Valitse JSON-tiedosto, jossa on työpaikkojen tiedot.')
+      }
+
+      if (file.size > 256 * 1024) {
+        throw new Error('Tiedosto on liian suuri. Enimmäiskoko on 256 KiB.')
+      }
+
+      // Read the file as text; parsing does not execute its contents.
+      const text = await file.text()
+      let body
+
+      try {
+        body = JSON.parse(text)
+      } catch {
+        throw new Error('Tiedosto ei ole kelvollista JSONia. Tarkista sen sisältö.')
+      }
+
+      // The backend checks the structure, fields and current duplicates.
+      return await apiRequest('/job-import/preview', {
+        method: 'POST',
+        token: session.token,
+        body,
+      })
+    } catch (requestError) {
+      showRequestError(requestError)
+      return null
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  async function importJobs(selectedJobs) {
+    if (isBusy || selectedJobs.length === 0) return false
+
+    setError('')
+    setNotice('')
+    setIsBusy(true)
+
+    try {
+      // Send job fields only; the backend assigns IDs and ownership.
+      const result = await apiRequest('/job-import/save', {
+        method: 'POST',
+        token: session.token,
+        body: { jobs: selectedJobs },
+      })
+
+      const { imported, duplicate } = result.summary
+
+      setNotice(
+        `Tuonti valmis. Tallennettu: ${imported}. `
+        + `Kaksoiskappaleita ohitettu: ${duplicate}.`
+        + (filters.status
+          ? ' Nykyinen tilasuodatus voi rajata työpaikkoja pois listalta.'
+          : ''),
+      )
+
+      try {
+        // Preserve the user's current filter and ordering after import.
+        await loadJobs(filters)
+      } catch (requestError) {
+        if (requestError.status === 401) {
+          showRequestError(requestError)
+        } else {
+          // A failed list refresh does not undo the completed import.
+          setError(
+            'Tuonti onnistui, mutta lista ei päivittynyt. '
+            + 'Näkyvä lista voi olla vanhentunut. Paina Päivitä lista.',
+          )
+        }
+      }
+
+      // Close the preview after a confirmed save, even if refresh failed.
+      return true
+    } catch (requestError) {
+      // Keep the selection available so the user can retry the import.
+      showRequestError(requestError)
+      return false
+    } finally {
+      setIsBusy(false)
+    }
   }
 
   async function saveJob(body) {
@@ -376,6 +469,12 @@ export default function App() {
         </section>
       ) : (
         <div className="workspace">
+          {/* Keep imported file contents inside the authenticated view. */}
+          <JobImport
+            onPreview={previewImport}
+            onImport={importJobs}
+            isBusy={isBusy}
+          />
           {/* A changed key resets the form when the selected job changes. */}
           <JobForm
             key={editingJob?.id ?? 'new'}

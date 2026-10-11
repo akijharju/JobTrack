@@ -207,3 +207,59 @@ textarea {
   display: grid;
   gap: 0.35rem;
 }
+
+/* Separate the preview from the file selection form. */
+.import-preview {
+  margin-top: 1.5rem;
+}
+
+/* Display imported jobs as a readable list without default list markers. */
+.import-list {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Keep each job's selection, result and details together. */
+.import-list > li {
+  padding: 1rem;
+  border: 1px solid #dce2e8;
+  border-radius: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+/* Keep the checkbox beside its label, including on narrow screens. */
+.import-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.import-choice input {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.25rem;
+}
+
+/* Make expandable details easy to identify. */
+.import-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.import-details dt {
+  margin-top: 0.75rem;
+  font-weight: 600;
+}
+
+.import-details dd {
+  margin: 0.2rem 0 0;
+}
+
+/* Preserve line breaks written in the original notes. */
+.import-notes {
+  white-space: pre-wrap;
+}
