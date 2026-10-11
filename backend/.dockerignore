@@ -1,0 +1,10 @@
+# Install dependencies inside the image.
+node_modules/
+
+# Keep local settings and secrets outside the image.
+.env
+.env.*
+
+# Exclude local logs and tests from the runtime image.
+*.log
+test/

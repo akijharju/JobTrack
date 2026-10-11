@@ -64,7 +64,9 @@ Backendin listaus tukee hakemuksen tilan mukaista suodatusta ja prioriteettijär
 
 Frontend on toteutettu Reactilla ja Vitellä. Siinä ovat kirjautumis- ja rekisteröitymislomake, omien työpaikkojen taulukko, yhteinen lisäys- ja muokkauslomake, poisto vahvistuskyselyllä, listan päivitys ja paikallinen uloskirjautuminen. Rekisteröityminen, kirjautuminen ja työpaikkojen CRUD-toiminnot on vahvistettu selaimessa. Frontendin lint-tarkistus ja tuotantoversion koostaminen ovat onnistuneet.
 
-Käyttöliittymässä on tilasuodatus sekä järjestysvalinnat Uusimmat ensin ja Prioriteetti: korkea ensin. Niiden toiminta on vahvistettu selaimessa myös työpaikan lisäämisen ja muokkaamisen yhteydessä. Koko sovelluksen kontitus ja Nginx-asetukset tehdään myöhemmin.
+Käyttöliittymässä on tilasuodatus sekä järjestysvalinnat Uusimmat ensin ja Prioriteetti: korkea ensin. Niiden toiminta on vahvistettu selaimessa myös työpaikan lisäämisen ja muokkaamisen yhteydessä.
+
+Koko sovellus toimii Docker Composella osoitteessa `http://localhost`. Nginx tarjoaa rakennetun React-käyttöliittymän ja välittää `/api/`-pyynnöt Expressille. Frontend, backend ja MariaDB toimivat omissa konteissaan. Konttien käynnistyminen, tietokantayhteys, Nginxin asetukset ja API-välitys on tarkistettu, ja opiskelija on vahvistanut sovelluksen toimivan selaimessa.
 
 ## REST API
 
@@ -247,7 +249,7 @@ Pidä kehitystietokanta ja backend käynnissä. Käynnistä frontend omassa term
 npm run dev
 ```
 
-Avaa `http://localhost:5173`. Vite käyttää kiinteää porttia 5173 ja ilmoittaa virheestä, jos portti on varattu. Selain käyttää suhteellisia `/api`-osoitteita, ja Viten kehitysproxy välittää pyynnöt Expressille. Tuotannossa API-välityksen toteuttaa myöhemmin Nginx.
+Avaa `http://localhost:5173`. Vite käyttää kiinteää porttia 5173 ja ilmoittaa virheestä, jos portti on varattu. Selain käyttää suhteellisia `/api`-osoitteita, ja Viten kehitysproxy välittää pyynnöt Expressille. Koko sovelluksen konttikäynnistyksessä API-välityksen toteuttaa Nginx.
 
 ### Frontendin rakenne ja istunto
 
@@ -266,6 +268,61 @@ Kirjautumisen jälkeen sovellus hakee käyttäjän työpaikat ja näyttää työ
 Uusi työpaikka lisätään lomakkeella. Muokkaa-painike avaa valitun työpaikan tiedot samaan lomakkeeseen, ja Peruuta muokkaus palauttaa lisäystilaan tallentamatta muutoksia. Tallennuksen jälkeen lista haetaan uudelleen nykyisillä suodatus- ja järjestysvalinnoilla. Jos tallennus onnistuu mutta listan haku epäonnistuu, käyttöliittymä ilmoittaa molemmista erikseen. Poisto vaatii vahvistuksen, ja rivi poistuu listalta vasta onnistuneen palvelinpyynnön jälkeen.
 
 Hakemuksen tila -valinta rajaa listaa backendin `status`-kyselyparametrilla. Kaikki tilat jättää parametrin pois. Järjestys-valinta käyttää `sort=newest`- tai `sort=priority`-parametria. Prioriteettijärjestys on korkea, normaali ja matala; saman prioriteetin sisällä uusin tunniste tulee ensin. Otsikon lukumäärä kertoo nykyisen hakutuloksen koon. Päivitä lista säilyttää valinnat, ja uusi kirjautuminen palauttaa oletukset Kaikki tilat ja Uusimmat ensin.
+
+## Koko sovelluksen käynnistäminen Dockerilla
+
+Käynnistys edellyttää Dockeria, Docker Composea ja täytettyä juuren `.env`-tiedostoa. Backendin ja frontendin riippuvuudet asennetaan Docker-kuvien rakennuksessa `npm ci` -komennolla. Paikallista Node-asennusta ei tarvita tähän käynnistystapaan.
+
+Lisää tietokanta- ja JWT-asetusten lisäksi `.env.example`-tiedostossa kuvatut konttiasetukset:
+
+| Muuttuja | Tarkoitus | Malliarvo |
+| --- | --- | --- |
+| `NODE_IMAGE` | Backendin ajokuva ja frontendin rakennuskuva | `node:24-bookworm-slim` |
+| `NGINX_IMAGE` | Frontendin ajokuva | `nginx:stable-alpine` |
+| `DB_CONTAINER_HOST` | Tietokannan palvelunimi Compose-verkossa | `db` |
+| `DB_CONTAINER_PORT` | Tietokannan sisäinen portti | `3306` |
+| `API_UPSTREAM` | Nginxin käyttämä backend-osoite ilman loppukauttaviivaa | `http://backend:3000` |
+| `WEB_HOST` | Julkaistavan HTTP-portin sidontaosoite | `127.0.0.1` |
+| `WEB_PORT` | Sovelluksen HTTP-portti omalla koneella | `80` |
+
+Backend-kontin `DB_HOST` ja `DB_PORT` saavat arvonsa `DB_CONTAINER_HOST`- ja `DB_CONTAINER_PORT`-asetuksista. Kehityksen paikalliselle Nodelle tarkoitetut `DB_HOST`- ja `DB_PORT`-arvot säilyvät juuren `.env`:ssä ennallaan. Vain frontendin HTTP-portti julkaistaan omalle koneelle; backend ja tietokanta ovat käytettävissä Compose-verkon sisällä.
+
+Tiedostojen tehtävät:
+
+- `docker-compose.yml` määrittelee kolme palvelua, ympäristömuuttujat, terveystarkistukset ja käynnistysjärjestyksen.
+- `backend/Dockerfile` asentaa ajonaikaiset riippuvuudet ja käynnistää `node server.js` -prosessin ilman root-oikeuksia.
+- `frontend/Dockerfile` rakentaa Reactin Node-vaiheessa ja kopioi valmiit tiedostot Nginx-kuvaan.
+- `frontend/nginx.conf.template` määrittelee staattiset tiedostot ja API-välityksen. Nginxin käynnistysskripti täyttää `API_UPSTREAM`-arvon ympäristöstä.
+- Molempien sovellushakemistojen `.dockerignore` sulkee paikalliset ympäristötiedostot, riippuvuudet ja lokit pois rakennuskontekstista.
+
+Kun vaihdat paikallisesta kehityksestä koko sovelluksen konttikäynnistykseen, pysäytä paikallinen backend ja Vite näppäinyhdistelmällä Ctrl+C. Aja sitten projektin juuressa:
+
+```sh
+docker compose config --quiet
+docker compose -f docker-compose.dev.yml stop
+docker compose up -d --build --wait
+```
+
+Avaa `http://localhost`. `--wait` odottaa palvelujen terveystarkistusten onnistumista. Ensimmäinen käynnistys voi kestää kuvien lataamisen ja riippuvuuksien asentamisen vuoksi. Myöhemmät lähdekoodimuutokset otetaan käyttöön samalla `docker compose up -d --build --wait` -komennolla.
+
+Kehityksen ja koko sovelluksen Compose-asetukset käyttävät samaa `dbdata`-volumea, kun ne ajetaan samalla Compose-projektin nimellä. Tietokannan tiedot säilyvät kontteja vaihdettaessa. Uudessa tyhjässä kannassa `backend/schema.sql` suoritetaan automaattisesti alustuksessa. Se ei päivitä olemassa olevan kannan taulurakennetta.
+
+Pysäytä koko sovellus tietoja poistamatta komennolla `docker compose stop`. Kun palaat paikalliseen kehitykseen, pysäytä ensin koko sovellus, käynnistä tietokanta komennolla `docker compose -f docker-compose.dev.yml up -d --wait` ja käynnistä backend sekä Vite omissa terminaaleissaan aiempien ohjeiden mukaan.
+
+### Konttikäynnistyksen tarkistukset
+
+Aja projektin juuressa:
+
+```sh
+docker compose ps
+docker compose exec backend node check-db.js
+docker compose exec frontend nginx -t
+curl -i http://localhost/api/health
+```
+
+Opiskelijan toimittamassa ajossa 11.10.2026 molemmat sovelluskuvat rakennettiin ja kaikki kolme palvelua olivat `healthy`. Tietokantatarkistus löysi `users`- ja `jobs`-taulut, Nginxin asetustarkistus onnistui ja Nginxin kautta tehty health-pyyntö palautti `200` sekä `{"status":"ok"}`. Opiskelija vahvisti myös sovelluksen toimivan selaimessa konttikäynnistyksellä.
+
+Rakennus tuotti kaksi varoitustyyppiä: Bake-rakennustavan tarvitsema Buildx puuttui, ja `InvalidDefaultArgInFrom` ilmoitti Dockerfilejen pohjakuvamuuttujien puuttuvista oletusarvoista. Compose välitti vaaditut kuva-arvot `.env`:stä, ja rakennus valmistui varoituksista huolimatta. Dockerfilet edellyttävät tällä hetkellä pohjakuvien antamista rakennusargumentteina.
 
 ## Testaus
 

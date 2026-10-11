@@ -1,0 +1,10 @@
+# Build dependencies and output inside Docker.
+node_modules/
+dist/
+
+# Keep local environment files outside the build context.
+.env
+.env.*
+
+# Exclude local logs.
+*.log

@@ -1,0 +1,79 @@
+services:
+  db:
+    image: mariadb:${MARIADB_VERSION:?Aseta MARIADB_VERSION}
+    environment:
+      # These values initialize an empty database volume.
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Aseta DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_NAME:?Aseta DB_NAME}
+      MARIADB_USER: ${DB_USER:?Aseta DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?Aseta DB_PASSWORD}
+    volumes:
+      # Use the same persistent volume as the development configuration.
+      - dbdata:/var/lib/mysql
+      # Create application tables when a new database is initialized.
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:?Aseta NODE_IMAGE}
+    environment:
+      NODE_ENV: production
+      # Containers connect through the Compose network.
+      DB_HOST: ${DB_CONTAINER_HOST:?Aseta DB_CONTAINER_HOST}
+      DB_PORT: ${DB_CONTAINER_PORT:?Aseta DB_CONTAINER_PORT}
+      DB_NAME: ${DB_NAME:?Aseta DB_NAME}
+      DB_USER: ${DB_USER:?Aseta DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD:?Aseta DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Aseta JWT_SECRET}
+      JWT_TTL_SECONDS: ${JWT_TTL_SECONDS:?Aseta JWT_TTL_SECONDS}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # Check HTTP readiness with Node, which is already in the image.
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/api/health')
+          .then(response => process.exit(response.ok ? 0 : 1))
+          .catch(() => process.exit(1))
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:?Aseta NODE_IMAGE}
+        NGINX_IMAGE: ${NGINX_IMAGE:?Aseta NGINX_IMAGE}
+    environment:
+      # Nginx reads this value when it fills the configuration template.
+      API_UPSTREAM: ${API_UPSTREAM:?Aseta API_UPSTREAM}
+    ports:
+      # Publish only the web entry point on the host.
+      - "${WEB_HOST:?Aseta WEB_HOST}:${WEB_PORT:?Aseta WEB_PORT}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # Check that Nginx can serve the built frontend.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  dbdata:
