@@ -309,7 +309,7 @@ npm --prefix frontend run build
 
 Tarkistuksessa 11.10.2026 lint palautti 0 virhettä ja 0 varoitusta, ja build onnistui `node:20-alpine`-kontissa. Lähdekoodi oli vain luettavana, joten build kirjoitettiin kontin tilapäishakemistoon ja Viten asetukset ladattiin `--configLoader runner` -valinnalla. Paikallinen ajo pysähtyi puuttuviin Linux glibc -natiiviriippuvuuksiin: asennetussa `node_modules`-hakemistossa olivat Alpinen musl-versiot.
 
-Lint ja build eivät ole selaimen toimintatestejä. Frontendille ei ole automaattisia komponentti- tai selaintestejä. Ennen palautusta kokeile viimeisellä konttiversiolla rekisteröityminen, kirjautuminen, CRUD, suodatus, katselumodaali, JSON-esikatselu, valittujen tallennus, toistuva tuonti ja uloskirjautuminen. Tarkista myös virheellinen JSON ja kahden käyttäjän tietojen erillisyys. Aiemmat käsin tehdyt kokeilut eivät yksin varmista uusimpia käyttöliittymämuutoksia.
+Frontendin automaattiset tarkistukset kattavat staattisen koodintarkistuksen ja tuotantoversion koostamisen. Käyttöliittymän toiminnallinen testaus tehdään käsin selaimessa. Testattavia toimintoja ovat rekisteröityminen, kirjautuminen, työpaikkojen CRUD-toiminnot, suodatus, katselumodaali, JSON-tuonti ja uloskirjautuminen. Virhetilanteiden tarkasteluun kuuluvat virheellinen JSON, toistuva tuonti ja käyttäjien tietojen erillisyys. Automaattisia frontendin komponentti- tai selaintestejä ei ole toteutettu.
 
 ### 4. Rajapinnan terveystarkistus
 ```sh
