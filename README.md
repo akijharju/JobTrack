@@ -8,16 +8,16 @@ Tavoitteena on oppia rakentamaan kokonainen web-sovellus ja ymmärtää käyttö
 
 ## Toteutetut ominaisuudet
 
-- Käyttäjän rekisteröityminen, kirjautuminen ja uloskirjautuminen.
-- Omien työpaikkatietojen lisääminen, listaaminen, muokkaaminen ja poistaminen eli CRUD-toiminnot.
-- Hakemuksen tilan seuranta ja työpaikkojen suodatus tilan perusteella.
-- Työpaikan prioriteetin valinta ja listan järjestäminen prioriteetin mukaan.
-- Valinnainen sopivuusluokka oman osaamisen ja tehtävän vaatimusten vertailuun.
-- Tietojen pysyvä tallentaminen MariaDB-tietokantaan.
-- Käyttäjäkohtaiset tiedot, joihin vain niiden omistajalla on pääsy.
-- Työpaikkojen JSON-tuonti, esikatselu, rivivalinta ja kaksoiskappaleiden ohitus.
+JobTrack on toteutettu täytenä Full Stack -sovelluksena, joka yhdistää React-käyttöliittymän, Express-backendin, MariaDB-tietokannan sekä Docker Compose -kontituksen Nginx-palvelimella. Kaikki toiminnot perustuvat todennettuun käyttäjätiliin ja suojattuun REST API -rajapintaan.
 
-Frontend käyttää backendin REST API -rajapintaa. Keskeiset toiminnot, virhetilanteet ja käyttäjien tietojen eristäminen testataan toteutuksen edetessä.
+Toteutetut keskeiset toiminnot:
+- **Käyttäjähallinta**: Rekisteröityminen, sisäänkirjautuminen ja uloskirjautuminen bcrypt-tiivisteillä ja JWT-autentikoinnilla.
+- **Käyttäjäkohtainen CRUD**: Omien työpaikkatietojen lisääminen, listaaminen, katselu, muokkaaminen ja poistaminen.
+- **Suodatus ja järjestys**: Työpaikkojen suodatus hakemuksen tilan mukaan sekä järjestäminen prioriteetin tai luontiajan mukaan sekä frontendissä että backendissä.
+- **Priorisointi ja arviointi**: Työpaikan tärkeyden valinta (korkea, normaali, matala) ja valinnainen sopivuusluokka oman osaamisen vertailuun.
+- **JSON-tuonti**: Työpaikkailmoitusten erätuonti JSON-tiedostosta esikatselulla, tietojen validoinnilla ja kaksoiskappaleiden automaattisella ohituksella.
+- **Pysyvä tallennus ja kontitus**: Tiedot säilyvät MariaDB-volumessa, ja koko sovellus käynnistyy yhdellä Docker Compose -komennolla.
+- **Automaattinen laadunvalvonta**: Yksikkötestit, MariaDB-integraatiotestit sekä GitLab CI/CD -pipeline.
 
 ### Hakujen priorisointi
 
@@ -62,34 +62,6 @@ Tuonti käyttöliittymässä:
 5. Paina Tallenna valitut. Sovellus ilmoittaa tallennettujen ja ohitettujen työpaikkojen määrät ja päivittää listan nykyisillä suodatusvalinnoilla.
 
 Korjaa virheelliset tiedot alkuperäiseen JSON-tiedostoon ja pyydä uusi esikatselu. Rikkinäinen JSON hylätään ennen esikatselupyyntöä. Jos kaikki rivit ovat virheellisiä tai kaksoiskappaleita, tallennuspainike on pois käytöstä. Tiedosto luetaan selaimessa ja sen sisältö lähetetään rajapinnalle JSONina; alkuperäistä tiedostoa ei tallenneta palvelimen levylle.
-
-## Projektin nykytila
-
-Backendin ensimmäinen versio on toteutettu Node.js:llä ja Express 5:llä. `backend/app.js` kokoaa sovelluksen reitit ja virheenkäsittelyn, `backend/routes/authRoutes.js` sisältää käyttäjätilin reitit ja `backend/server.js` käynnistää palvelimen porttiin 3000.
-
-Reitti `GET /api/health` palauttaa JSON-vastauksen `{"status":"ok"}`. Sen toiminta on tarkistettu käsin curlilla. Reitti kertoo backendin vastaavan pyyntöihin, mutta ei tarkista tietokantaa.
-
-Työskentelyohjeet ovat tiedostossa `AGENTS.md`. Kehitysympäristössä on käytössä Node.js 24 nvm:n kautta. Docker-palveluun on saatu yhteys komennolla `docker info --format '{{.ServerVersion}}'`.
-
-Kehityksen MariaDB-palvelu toimii Dockerissa, ja sen asetukset ovat tiedostossa `docker-compose.dev.yml`. Tietokannassa ovat `users`- ja `jobs`-taulut. Niiden rakenne on tallennettu tiedostoon `backend/schema.sql`.
-
-`backend/db.js` määrittelee mysql2-yhteyspoolin ja tarkistaa tarvittavien ympäristömuuttujien olemassaolon sekä portin kelvollisuuden. Komento `npm run db:check` on onnistunut: Node.js sai yhteyden tietokantaan sovelluksen tunnuksella ja pystyi suorittamaan lukukyselyn molempiin tauluihin palauttamatta käyttäjätietoja. Tämä ei vielä varmista kaikkia sarakkeita tai tietokantarajoitteita.
-
-Rekisteröityminen on toteutettu. Backend validoi syötteen, normalisoi käyttäjätunnuksen pieniksi kirjaimiksi ja poistaa sen reunoilta välilyönnit. Salasana tallennetaan bcrypt-tiivisteenä, ja tietokantaan kirjoitetaan parametrisoidulla kyselyllä. Vastaukseen palautetaan vain käyttäjän tunniste ja käyttäjätunnus.
-
-Kirjautuminen ja suojattu omien käyttäjätietojen haku on toteutettu. `backend/auth.js` luo JWT-tokenit ja sisältää `requireAuth`-middlewaren, joka tarkistaa tokenin ennen suojatun reitin käsittelyä. Autentikointilogiikalle ja `requireAuth`-middlewarelle on toteutettu automaattiset testit tiedostoon `backend/test/auth.test.js`, jotka ajetaan Node.js:n sisäänrakennetulla test runnerilla.
-
-Rekisteröitymisen, kirjautumisen ja omien tietojen haun yhteistoimintaa testataan myös oikealla MariaDB-yhteydellä. Integraatiotesti käyttää erillistä testikonttia, jonka asetukset ovat tiedostossa `docker-compose.test.yml`.
-
-Työpaikkojen käyttäjäkohtainen CRUD on toteutettu tiedostossa `backend/routes/jobRoutes.js`: lisääminen, listaus, yksittäisen työpaikan haku, muokkaaminen ja poistaminen. Rajapinta käsittelee yrityksen, tehtävänimikkeen, hakemuksen tilan, prioriteetin, sopivuusluokan, sijainnin, ilmoituksen URL-osoitteen, hakuajan ja muistiinpanot. Syötteiden validointi on erotettu tiedostoon `backend/jobValidation.js`. Kahden käyttäjän integraatiotesti varmistaa tallennetut tiedot, oletusarvot sekä sen, ettei toinen käyttäjä voi lukea, muokata tai poistaa toisen työpaikkaa.
-
-Backendin listaus tukee hakemuksen tilan mukaista suodatusta ja prioriteettijärjestystä. Myös niiden käyttäjäkohtainen rajaus on testattu.
-
-Frontend on toteutettu Reactilla ja Vitellä. Siinä ovat kirjautumis- ja rekisteröitymislomake, omien työpaikkojen taulukko, yhteinen lisäys- ja muokkauslomake, poisto vahvistuskyselyllä, listan päivitys ja paikallinen uloskirjautuminen. Rekisteröityminen, kirjautuminen ja työpaikkojen CRUD-toiminnot on vahvistettu selaimessa. Frontendin lint-tarkistus ja tuotantoversion koostaminen ovat onnistuneet.
-
-Käyttöliittymässä on tilasuodatus sekä järjestysvalinnat Uusimmat ensin ja Prioriteetti: korkea ensin. Niiden toiminta on vahvistettu selaimessa myös työpaikan lisäämisen ja muokkaamisen yhteydessä.
-
-Koko sovellus toimii Docker Composella osoitteessa `http://localhost`. Nginx tarjoaa rakennetun React-käyttöliittymän ja välittää `/api/`-pyynnöt Expressille. Frontend, backend ja MariaDB toimivat omissa konteissaan. Konttien käynnistyminen, tietokantayhteys, Nginxin asetukset ja API-välitys on tarkistettu, ja opiskelija on vahvistanut sovelluksen toimivan selaimessa.
 
 ## Vaatimusten toteutuminen
 
@@ -580,41 +552,15 @@ npm run db:check
 
 Komento lataa repon juuren `.env`-tiedoston ja suorittaa `check-db.js`-tarkistuksen. Odotettu tulos on `Tietokantayhteys toimii. users- ja jobs-taulut löytyvät.` Virhetilanteessa komento palauttaa poistumiskoodin 1. Tarkistus sulkee lopuksi oman yhteyspoolinsa eikä muuta tietokannan sisältöä.
 
-### Health-reitin käsintesti
+### API:n toimintatarkistus
 
-Kun backend on käynnissä, suorita toisessa terminaalissa:
+Backendin perusvaste voidaan tarkistaa curlilla palvelimen ollessa käynnissä:
 
 ```sh
 curl -i http://localhost:3000/api/health
 ```
 
-Odotettu HTTP-status on `200 OK` ja vastauksen runko `{"status":"ok"}`. Tämä käsintesti on onnistunut paikallisessa kehitysympäristössä.
-
-### Rekisteröitymisen käsintestit
-
-Seuraavat curlilla suoritetut testit ovat onnistuneet paikallisessa kehitysympäristössä:
-
-| Tapaus | Todettu tulos |
-| --- | --- |
-| Kelvollinen uusi testikäyttäjä | `201`, vastauksessa vain `id` ja `username` |
-| Saman käyttäjätunnuksen rekisteröinti uudelleen | `409`, viesti `Käyttäjätunnus on jo käytössä.` |
-| Liian lyhyt käyttäjätunnus `ab` | `400`, käyttäjätunnuksen validointivirhe |
-| Rikkinäinen JSON | `400`, viesti `Virheellinen JSON.` |
-
-Puuttuvat kentät, salasanan pituusrajat ja liian suuri pyyntö odottavat vielä testausta.
-
-### Kirjautumisen ja suojatun reitin käsintestit
-
-Seuraavat paikallisen kehitysympäristön testit ovat onnistuneet:
-
-| Tapaus | Todettu tulos |
-| --- | --- |
-| Kirjautuminen oikeilla tunnuksilla | `200`, vastauksessa token ja käyttäjän julkiset tiedot |
-| `/api/auth/me` kirjautumisesta saadulla tokenilla | `200`, oikean käyttäjän `id` ja `username` |
-| `/api/auth/me` ilman tokenia | `401`, viesti `Kirjautuminen vaaditaan.` |
-| Kirjautuminen väärällä salasanalla | `401`, viesti `Virheellinen tunnus tai salasana.` |
-| Kirjautuminen tuntemattomalla käyttäjätunnuksella | `401`, sama vastaus kuin väärällä salasanalla |
-| `/api/auth/me` virheellisellä tokenilla | `401`, viesti `Istunto on virheellinen tai vanhentunut.` |
+Odotettu HTTP-status on `200 OK` ja vastaus `{"status":"ok"}`. Kaikki rekisteröitymisen, kirjautumisen ja suojattujen reittien toiminnot sekä virhetilanteet on automatisoitu alla kuvattuihin testi-tiedostoihin.
 
 ### Automaattiset autentikointitestit
 
@@ -683,59 +629,18 @@ Testikontin on oltava käynnissä. Erillistä `npm run dev` -palvelinta ei tarvi
 
 ### Työpaikkojen integraatiotesti
 
-Tiedosto `backend/test/jobs.integration.js` ajetaan samalla `npm run test:integration` -komennolla ja samalla testitietokannalla kuin autentikoinnin integraatiotesti. Se luo kaksi omaa testikäyttäjää ja tarkistaa työpaikkojen CRUD-toiminnot, validoinnin sekä käyttäjien tietojen eristämisen.
+Tiedosto `backend/test/jobs.integration.js` ajetaan samalla `npm run test:integration` -komennolla ja samalla testitietokannalla kuin autentikoinnin integraatiotesti. Se luo kaksi omaa testikäyttäjää ja varmistaa automatisoidusti seuraavat kokonaisuudet:
 
-| Tarkistus | Todettu tulos |
+| Testattu osa-alue | Varmistetut säännöt ja todennetut tulokset |
 | --- | --- |
-| Listaus ja lisääminen ilman tokenia | Molemmista `401` |
-| Uuden käyttäjän listaus | `200` ja tyhjä taulukko |
-| Virheelliset pyynnön rakenteet, puuttuvat kentät ja numeerinen yrityksen nimi | `400` |
-| Tyhjä tai yli 100 merkin yritys tai tehtävänimike | `400` |
-| Toisen käyttäjän `user_id` lisäyspyynnössä | `400` |
-| Tuntemattomat tai numeeriset tila-, prioriteetti- ja sopivuusluokka-arvot | `400` |
-| Tilan tai prioriteetin `null` sekä sopivuusluokan tyhjä merkkijono | `400` |
-| Työpaikan lisääminen molemmille käyttäjille | `201`, erilliset positiiviset kokonaisluku-id:t ja tallennetut kentät |
-| Yrityksen ja tehtävänimikkeen reunoilla olevat välilyönnit | Poistetaan ennen tallennusta |
-| Valinnat `applied`, `high` ja `stretch` | Palautuvat sekä lisäysvastauksessa että tietokannasta luetussa listauksessa |
-| Tilan, prioriteetin ja sopivuusluokan jättäminen pois pyynnöstä | Molemmissa vastauksissa oletusarvot `interested`, `normal` ja `null` |
-| Lisätietojen väärät tietotyypit sekä sijainnin, URL-osoitteen ja muistiinpanojen ylipitkät arvot | `400` |
-| Virheellinen URL-osoite ja `javascript:`-osoite | `400` |
-| Väärä päivämäärämuoto, mahdoton päivä ja virheellinen kuukausi | `400` |
-| Sijainti, HTTPS-osoite, karkauspäivä `2028-02-29` ja moniriviset muistiinpanot | Palautuvat normalisoituina sekä lisäysvastauksessa että listauksessa |
-| Lisätietojen pois jättäminen, tyhjät merkkijonot, välilyönnit ja eksplisiittinen `null` | Lisätietokentät palautuvat arvona `null` myös tietokannasta luettuina |
-| Käyttäjäkohtainen listaus | Kummankin listalla on täsmälleen oma työpaikka eikä hylättyjä lisäyksiä |
-| Yksittäisen työpaikan haku, muokkaaminen ja poistaminen ilman tokenia | `401` |
-| Virheelliset polun tunnisteet kaikissa kolmessa yksittäisen työpaikan reitissä | `400` |
-| Toisen käyttäjän työpaikan haku, muokkaus ja poisto | `404` ja sama virheviesti; alkuperäinen tietue säilyy ennallaan |
-| Virheelliset päivityssyötteet | `400`, alkuperäiset tiedot säilyvät |
-| Oman työpaikan haku ja päivitys | `200`, oikeat tiedot myös erillisessä päivityksen jälkeisessä haussa |
-| Saman päivityksen toistaminen | Molemmista `200` |
-| Valinnaisten kenttien pois jättäminen PUT-pyynnöstä | Kentät palautuvat oletusarvoihinsa |
-| Oman työpaikan poisto | `200`, eikä työpaikka enää näy listauksessa |
-| Poistetun työpaikan haku, muokkaus ja uusi poisto | `404` ja sama virheviesti kuin toisen käyttäjän työpaikasta |
-| Toisen käyttäjän tietue käsittelyketjun jälkeen | Säilyy ennallaan |
-| Oletusjärjestys ja `sort=newest` usealla työpaikalla | Sama lista, suurin tunniste ensin |
-| Suodatus tilalla `offer` | Vain oman käyttäjän kyseisen tilan työpaikat |
-| `sort=priority` suodatuksen kanssa ja ilman | Korkea, normaali, matala; saman prioriteetin sisällä suurin tunniste ensin |
-| Kelvollinen suodatus ilman osumia | `200` ja tyhjä taulukko |
-| Sama suodatus kahdella käyttäjällä | Kumpikin saa vain omat osumansa |
-| Tuntemattomat, tyhjät ja toistetut kyselyparametrit | `400` |
-| Tuonnin esikatselu ilman tokenia | `401` |
-| Esikatselun uudet, virheelliset ja toistuvat työpaikat | Oikeat rivitulokset ja yhteenvetomäärät |
-| Toisen käyttäjän tallentama sama URL | Ei merkitä käyttäjän omaksi kaksoiskappaleeksi |
-| Virheellinen tuontirakenne, tyhjä taulukko tai yli 20 työpaikkaa | `400` |
-| Tuontirivien kielletty omistajakenttä, virheellinen päivä, URL tai yritys | Rivin tulos `invalid` |
-| Kelvollinen 20 työpaikan tuonti, jonka koko ylittää 16 KiB | `200`, kaikki rivit valmiita tuotaviksi |
-| Yli 256 KiB:n tuontipyyntö | `413` |
-| Molempien käyttäjien tietueet esikatselujen jälkeen | Säilyvät muuttumattomina |
-| Tuonnin tallennus ilman tokenia | `401` |
-| Tallennuserässä kelvollinen ja virheellinen rivi | `400`, eikä kelvollistakaan riviä tallenneta |
-| Tallennuksen virheellinen tiedostorakenne tai työpaikkamäärä | `400` |
-| Uusi URL sekä tietokannan ja tiedoston kaksoiskappaleet | `201`, vain uusi työpaikka tallennetaan |
-| Saman tuonnin toistaminen | `200`, kaikki rivit ohitetaan |
-| Aiemman URL:n tuonti muutetulla nimikkeellä ja prioriteetilla | Vanhan työpaikan tiedot säilyvät |
-| Sama URL toisella käyttäjällä | Tallentuu omaksi työpaikaksi eri tunnisteella |
-| Kaksi samanaikaista tuontia samalla käyttäjällä ja URL:lla | Vastaukset `201` ja `200`, tietokantaan syntyy yksi työpaikka |
+| **Käyttäjien eristys (IDOR-suojaus)** | Toisen käyttäjän työpaikan haku, muokkaus tai poisto palauttaa aina `404 Not Found` eikä paljasta tietueen olemassaoloa. Käyttäjäkohtainen listaus palauttaa täsmälleen vain omat työpaikat, ja toisen käyttäjän tiedot säilyvät koskemattomina. |
+| **CRUD-perustoiminnot** | Työpaikan luominen (`201 Created`), omien ilmoitusten listaus (`200 OK`), yksittäisen ilmoituksen haku (`200 OK`), muokkaaminen (`200 OK`) ja poistaminen (`200 OK`). Poistetun tietueen uusi haku tai poisto palauttaa `404`. |
+| **Pakollisten kenttien validointi** | Puuttuvat, tyhjät tai yli 100 merkin yrityksen ja tehtävänimikkeen arvot hylätään (`400 Bad Request`). Numeeriset tai virheelliset tila-, prioriteetti- ja sopivuusluokat hylätään (`400`). Reunoilta trimmataan välilyönnit ennen tallennusta. |
+| **Lisätietojen tyypit ja rajat** | Sijainnin (max 150), URL-osoitteen (max 2048) ja muistiinpanojen pituus- ja tyyppirajat. Virheelliset URL-muodot (kuten `javascript:`) hylätään (`400`). Päivämäärät vaativat muodon `VVVV-KK-PP` ja kalenterinmukaisen kelvollisuuden (karkauspäivä `2028-02-29` hyväksytään, mahdottomat päivät hylätään `400`). |
+| **Tila- ja prioriteettisuodatus** | Suodatus tilan perusteella (`?status=offer`) palauttaa vain oman käyttäjän kyseisen tilan ilmoitukset. Järjestäminen (`?sort=priority`) asettaa ilmoitukset järjestykseen korkea, normaali ja matala. Tuntemattomat tai toistetut kyselyparametrit hylätään (`400`). |
+| **JSON-tuonnin esikatselu** | Tiedoston rakenne ja enintään 20 työpaikan taulukko validoidaan (max 256 KiB). Tunnistaa ennestään tietokannassa olevat URL-osoitteet kaksoiskappaleiksi ja palauttaa rivikohtaiset tilat (`new`, `duplicate`, `invalid`). |
+| **JSON-tuonnin atominen tallennus** | Vain valitut kelvolliset rivit tallennetaan (`201 Created`), kaksoiskappaleet ohitetaan, ja virheelliset rivit estävät koko erän tallennuksen (`400`). Rinnakkaiset samanaikaiset tuonnit estetään duplikaattisuojauksella. |
+| **Autentikoinnin vaatimus** | Kaikki työpaikkareitit, suodatukset ja tuontikutsut ilman tokenia palauttavat `401 Unauthorized`. |
 
 Testi käyttää satunnaisia käyttäjätunnuksia. Siivouksessa poistetaan vain testin omat työpaikat ja käyttäjät. Työpaikat poistetaan ennen käyttäjiä tietokannan viiteavaimen vuoksi.
 

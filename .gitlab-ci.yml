@@ -2,6 +2,10 @@
 stages:
   - test
 
+default:
+  tags:
+    - docker
+
 frontend-check:
   stage: test
   image: node:20-alpine
