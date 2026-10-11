@@ -15,6 +15,9 @@ export default function App() {
   // Null means creation mode; a job object means editing mode.
   const [editingJob, setEditingJob] = useState(null)
 
+  // Navigation tab: 'jobs' | 'new' | 'import'
+  const [activeTab, setActiveTab] = useState('jobs')
+
   // Keep error messages separate from successful action messages.
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -32,12 +35,10 @@ export default function App() {
   })
 
   async function handleAuth(event) {
-    // Handle submission in React without reloading the page.
     event.preventDefault()
 
     if (isBusy) return
 
-    // Read the credentials before the inputs become disabled.
     const form = event.currentTarget
     const formData = new FormData(form)
     const credentials = {
@@ -51,18 +52,14 @@ export default function App() {
 
     try {
       if (isRegistering) {
-        // The backend validates the input and hashes the password.
         const user = await apiRequest('/auth/register', {
           method: 'POST',
           body: credentials,
         })
 
-        // Registration creates an account but does not return a login token.
         form.reset()
         setIsRegistering(false)
-        setNotice(`Tunnus ${user.username} luotiin. Kirjaudu sisään.`)
-
-        // Stop here so account creation does not also attempt a login.
+        setNotice(`Tunnus ${user.username} luotiin onnistuneesti. Voit nyt kirjautua sisään.`)
         return
       }
 
@@ -71,68 +68,55 @@ export default function App() {
         body: credentials,
       })
 
-      // Fetch private records using the token returned by the backend.
       const ownJobs = await apiRequest('/jobs', {
         token: login.token,
       })
 
-      // Open the main view only after both requests succeed.
       form.reset()
       setJobs(ownJobs)
-
-      // Each login starts with all jobs in the backend's default order.
       setFilters({ status: '', sort: 'newest' })
-
+      setActiveTab('jobs')
+      setEditingJob(null)
       setSession(login)
     } catch (requestError) {
-      // Show backend errors, such as an existing username, above the form.
       setError(requestError.message)
     } finally {
-      // This also runs after the return in the registration branch.
       setIsBusy(false)
     }
   }
 
   function changeAuthMode() {
-    // Do not switch forms while a login or registration request is running.
     if (isBusy) return
 
     setIsRegistering((currentMode) => !currentMode)
-
-    // Old messages may no longer describe the newly selected form.
     setError('')
     setNotice('')
   }
 
-  // Handle failures from requests that require a logged-in user.
   function showRequestError(requestError) {
-    // A rejected session must also clear private data from the screen.
     if (requestError.status === 401) {
       setSession(null)
       setJobs([])
       setEditingJob(null)
+      setActiveTab('jobs')
     }
 
     setError(requestError.message)
   }
 
   async function loadJobs(nextFilters) {
-    // Build the query string without joining parameter values by hand.
     const query = new URLSearchParams({
       sort: nextFilters.sort,
     })
 
-    // An omitted status means all statuses; an empty parameter is invalid.
     if (nextFilters.status) {
       query.set('status', nextFilters.status)
     }
 
-    // The backend handles filtering, ordering and ownership checks.
     const ownJobs = await apiRequest(`/jobs?${query.toString()}`, {
       token: session.token,
     })
 
-    // Change the list and its selected options only after a successful fetch.
     setJobs(ownJobs)
     setFilters(nextFilters)
   }
@@ -147,7 +131,6 @@ export default function App() {
     try {
       await loadJobs(nextFilters)
     } catch (requestError) {
-      // Keep the previous list and options if the new request fails.
       showRequestError(requestError)
     } finally {
       setIsBusy(false)
@@ -157,15 +140,15 @@ export default function App() {
   function startEditing(job) {
     if (isBusy) return
 
-    // Selecting a job fills the shared form with its saved values.
     setEditingJob(job)
+    setActiveTab('new')
     setError('')
     setNotice('')
   }
 
   function cancelEditing() {
-    // Form edits have not been saved, so no API request is needed.
     setEditingJob(null)
+    setActiveTab('jobs')
     setError('')
     setNotice('')
   }
@@ -178,7 +161,6 @@ export default function App() {
     setIsBusy(true)
 
     try {
-      // Check the size before reading the file into browser memory.
       if (!(file instanceof File) || file.size === 0) {
         throw new Error('Valitse JSON-tiedosto, jossa on työpaikkojen tiedot.')
       }
@@ -187,7 +169,6 @@ export default function App() {
         throw new Error('Tiedosto on liian suuri. Enimmäiskoko on 256 KiB.')
       }
 
-      // Read the file as text; parsing does not execute its contents.
       const text = await file.text()
       let body
 
@@ -197,7 +178,6 @@ export default function App() {
         throw new Error('Tiedosto ei ole kelvollista JSONia. Tarkista sen sisältö.')
       }
 
-      // The backend checks the structure, fields and current duplicates.
       return await apiRequest('/job-import/preview', {
         method: 'POST',
         token: session.token,
@@ -219,7 +199,6 @@ export default function App() {
     setIsBusy(true)
 
     try {
-      // Send job fields only; the backend assigns IDs and ownership.
       const result = await apiRequest('/job-import/save', {
         method: 'POST',
         token: session.token,
@@ -237,13 +216,11 @@ export default function App() {
       )
 
       try {
-        // Preserve the user's current filter and ordering after import.
         await loadJobs(filters)
       } catch (requestError) {
         if (requestError.status === 401) {
           showRequestError(requestError)
         } else {
-          // A failed list refresh does not undo the completed import.
           setError(
             'Tuonti onnistui, mutta lista ei päivittynyt. '
             + 'Näkyvä lista voi olla vanhentunut. Paina Päivitä lista.',
@@ -251,10 +228,10 @@ export default function App() {
         }
       }
 
-      // Close the preview after a confirmed save, even if refresh failed.
+      // Return to jobs tab after successful import
+      setActiveTab('jobs')
       return true
     } catch (requestError) {
-      // Keep the selection available so the user can retry the import.
       showRequestError(requestError)
       return false
     } finally {
@@ -270,7 +247,6 @@ export default function App() {
     setIsBusy(true)
 
     try {
-      // Use the same form for creating and updating a job.
       const path = editingJob ? `/jobs/${editingJob.id}` : '/jobs'
       const method = editingJob ? 'PUT' : 'POST'
 
@@ -280,10 +256,9 @@ export default function App() {
         body,
       })
 
-      // The write succeeded, so the editor can return to creation mode.
       setEditingJob(null)
+      setActiveTab('jobs')
 
-      // Explain why a saved job may be absent from the filtered list.
       const hiddenByFilter = (
         filters.status && savedJob.status !== filters.status
       )
@@ -291,28 +266,23 @@ export default function App() {
       setNotice(
         hiddenByFilter
           ? 'Työpaikka tallennettu. Nykyinen tilasuodatus rajaa sen pois listalta.'
-          : 'Työpaikka tallennettu.',
+          : 'Työpaikka tallennettu onnistuneesti.',
       )
 
       try {
-        // Fetch again so changed statuses and priorities appear correctly.
         await loadJobs(filters)
       } catch (requestError) {
         if (requestError.status === 401) {
           showRequestError(requestError)
         } else {
-          // A failed refresh does not undo the successful database write.
           setError(
-            'Tallennus onnistui, mutta lista ei päivittynyt. '
-            + 'Näkyvä lista voi olla vanhentunut. Paina Päivitä lista.',
+            'Työpaikka tallennettiin, mutta listaa ei voitu päivittää automaattisesti.',
           )
         }
       }
 
-      // Clear the submitted form even if the later list refresh failed.
       return true
     } catch (requestError) {
-      // A failed write keeps the form values available for correction.
       showRequestError(requestError)
       return false
     } finally {
@@ -323,11 +293,9 @@ export default function App() {
   async function deleteJob(job) {
     if (isBusy) return
 
-    // Ask before sending a request that removes a database record.
     const confirmed = window.confirm(
-      `Poistetaanko työpaikka "${job.title}" (${job.company})?`,
+      `Haluatko varmasti poistaa työpaikan ${job.company} – ${job.title}?`,
     )
-
     if (!confirmed) return
 
     setError('')
@@ -340,17 +308,23 @@ export default function App() {
         token: session.token,
       })
 
-      // Remove the row only after the server confirms deletion.
-      setJobs((currentJobs) => (
-        currentJobs.filter((item) => item.id !== job.id)
-      ))
-
-      // Close the editor if the deleted job was being edited.
       if (editingJob?.id === job.id) {
         setEditingJob(null)
       }
 
-      setNotice('Työpaikka poistettu.')
+      setNotice(`Työpaikka ${job.company} – ${job.title} poistettiin.`)
+
+      try {
+        await loadJobs(filters)
+      } catch (requestError) {
+        if (requestError.status === 401) {
+          showRequestError(requestError)
+        } else {
+          setError(
+            'Työpaikka poistettiin, mutta listaa ei voitu päivittää automaattisesti.',
+          )
+        }
+      }
     } catch (requestError) {
       showRequestError(requestError)
     } finally {
@@ -359,12 +333,10 @@ export default function App() {
   }
 
   function handleLogout() {
-    // Forget the local token; this does not revoke it on the server.
     setSession(null)
-
-    // Clear private records and unfinished edits from the current view.
     setJobs([])
     setEditingJob(null)
+    setActiveTab('jobs')
     setError('')
     setNotice('')
   }
@@ -372,18 +344,24 @@ export default function App() {
   return (
     <main>
       <header className="page-header">
-        <div>
-          <h1>JobTrack</h1>
-          <p>Omat työpaikat ja hakemukset yhdessä paikassa.</p>
+        <div className="brand-group">
+          <div className="brand-logo">JT</div>
+          <div>
+            <h1 className="brand-title">JobTrack</h1>
+            <p className="brand-subtitle">Työnhaun ja hakemusten seurantasovellus</p>
+          </div>
         </div>
 
-        {/* Show session controls only after a successful login. */}
         {session && (
           <div className="session-controls">
-            <span>{session.user.username}</span>
+            <div className="user-badge" title="Kirjautunut käyttäjä">
+              <span className="user-avatar">👤</span>
+              <span className="user-name">{session.user.username}</span>
+            </div>
 
             <button
               type="button"
+              className="btn-secondary"
               onClick={handleLogout}
               disabled={isBusy}
             >
@@ -393,159 +371,245 @@ export default function App() {
         )}
       </header>
 
-      {/* Announce changing messages to screen reader users. */}
-      {error && <p className="error" role="alert">{error}</p>}
-      {notice && <p className="notice" role="status">{notice}</p>}
+      {error && <div className="error-banner" role="alert">{error}</div>}
+      {notice && <div className="notice-banner" role="status">{notice}</div>}
 
       {!session ? (
         <section className="login-panel" aria-labelledby="auth-heading">
           <h2 id="auth-heading">
-            {isRegistering ? 'Luo käyttäjätili' : 'Kirjaudu sisään'}
+            {isRegistering ? 'Luo uusi käyttäjätili' : 'Kirjaudu sisään'}
           </h2>
 
-          {/* A changed key clears credentials when the form mode changes. */}
           <form
             key={isRegistering ? 'register' : 'login'}
             onSubmit={handleAuth}
+            className="auth-form"
           >
-            <label htmlFor="username">Käyttäjätunnus</label>
-            <input
-              id="username"
-              name="username"
-              autoComplete="username"
-              autoCapitalize="none"
-              spellCheck={false}
-              aria-describedby={isRegistering ? 'username-help' : undefined}
-              required
-              disabled={isBusy}
-            />
+            <div className="form-group">
+              <label htmlFor="username">Käyttäjätunnus</label>
+              <input
+                id="username"
+                name="username"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-describedby={isRegistering ? 'username-help' : undefined}
+                required
+                disabled={isBusy}
+                placeholder="esim. matti"
+              />
+              {isRegistering && (
+                <p id="username-help" className="field-hint">
+                  3–30 merkkiä: a–z, numeroita tai alaviivaa.
+                </p>
+              )}
+            </div>
 
-            {/* Show account rules when the user is choosing new credentials. */}
-            {isRegistering && (
-              <p id="username-help">
-                Käytä 3–30 merkkiä: kirjaimia a–z, numeroita tai alaviivaa.
-                Isot kirjaimet muutetaan pieniksi.
-              </p>
-            )}
+            <div className="form-group">
+              <label htmlFor="password">Salasana</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete={isRegistering ? 'new-password' : 'current-password'}
+                aria-describedby={isRegistering ? 'password-help' : undefined}
+                required
+                disabled={isBusy}
+                placeholder="Vähintään 8 merkkiä"
+              />
+              {isRegistering && (
+                <p id="password-help" className="field-hint">
+                  Vähintään 8 merkkiä (enintään 72 tavua).
+                </p>
+              )}
+            </div>
 
-            <label htmlFor="password">Salasana</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete={isRegistering ? 'new-password' : 'current-password'}
-              aria-describedby={isRegistering ? 'password-help' : undefined}
-              required
-              disabled={isBusy}
-            />
+            <div className="auth-actions">
+              <button type="submit" className="btn-primary full-width" disabled={isBusy}>
+                {isBusy
+                  ? 'Käsitellään…'
+                  : isRegistering
+                    ? 'Luo käyttäjätili'
+                    : 'Kirjaudu sisään'}
+              </button>
 
-            {/* The backend measures the byte limit because Unicode sizes vary. */}
-            {isRegistering && (
-              <p id="password-help">
-                Vähintään 8 merkkiä ja enintään 72 tavua.
-                Erikoismerkit ja emojit voivat käyttää useita tavuja.
-              </p>
-            )}
-
-            <button type="submit" disabled={isBusy}>
-              {isBusy
-                ? 'Odota…'
-                : isRegistering
-                  ? 'Luo käyttäjätili'
-                  : 'Kirjaudu sisään'}
-            </button>
-
-            {/* This button changes the form mode without submitting credentials. */}
-            <button
-              type="button"
-              onClick={changeAuthMode}
-              disabled={isBusy}
-            >
-              {isRegistering
-                ? 'Takaisin kirjautumiseen'
-                : 'Ei tunnusta? Luo käyttäjätili'}
-            </button>
+              <button
+                type="button"
+                className="btn-link"
+                onClick={changeAuthMode}
+                disabled={isBusy}
+              >
+                {isRegistering
+                  ? '← Onko sinulla jo tunnus? Kirjaudu sisään'
+                  : 'Ei vielä tunnusta? Luo uusi tili →'}
+              </button>
+            </div>
           </form>
         </section>
       ) : (
         <div className="workspace">
-          {/* Keep imported file contents inside the authenticated view. */}
-          <JobImport
-            onPreview={previewImport}
-            onImport={importJobs}
-            isBusy={isBusy}
-          />
-          {/* A changed key resets the form when the selected job changes. */}
-          <JobForm
-            key={editingJob?.id ?? 'new'}
-            job={editingJob}
-            onSave={saveJob}
-            onCancel={cancelEditing}
-            isBusy={isBusy}
-          />
+          {/* Navigation tabs for switching views cleanly */}
+          <nav className="tab-nav" aria-label="Näkymät">
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === 'jobs' && !editingJob ? 'active' : ''}`}
+              onClick={() => {
+                setEditingJob(null)
+                setActiveTab('jobs')
+              }}
+            >
+              <span className="tab-icon">📋</span>
+              <span>Omat työpaikat</span>
+              <span className="tab-badge">{jobs.length}</span>
+            </button>
 
-          <section aria-labelledby="jobs-heading">
-            <div className="list-header">
-              {/* The count describes the current results, not all saved jobs. */}
-              <h2 id="jobs-heading">
-                Näytettävät työpaikat ({jobs.length})
-              </h2>
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === 'new' || editingJob ? 'active' : ''}`}
+              onClick={() => setActiveTab('new')}
+            >
+              <span className="tab-icon">{editingJob ? '✏️' : '➕'}</span>
+              <span>{editingJob ? 'Muokkaa työpaikkaa' : 'Uusi työpaikka'}</span>
+            </button>
 
-              <button
-                type="button"
-                onClick={() => refreshJobs()}
-                disabled={isBusy}
-              >
-                {isBusy ? 'Odota…' : 'Päivitä lista'}
-              </button>
-            </div>
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === 'import' && !editingJob ? 'active' : ''}`}
+              onClick={() => {
+                setEditingJob(null)
+                setActiveTab('import')
+              }}
+            >
+              <span className="tab-icon">📥</span>
+              <span>Tuo ilmoituksia (JSON)</span>
+            </button>
+          </nav>
 
-            <div className="job-filters">
-              <label>
-                Hakemuksen tila
-                <select
-                  value={filters.status}
-                  onChange={(event) => refreshJobs({
-                    ...filters,
-                    status: event.target.value,
-                  })}
-                  disabled={isBusy}
-                >
-                  <option value="">Kaikki tilat</option>
+          <div className="tab-content">
+            {/* View 1: Job list and filters */}
+            {activeTab === 'jobs' && !editingJob && (
+              <section className="jobs-section" aria-labelledby="jobs-heading">
+                <div className="list-header">
+                  <div>
+                    <h2 id="jobs-heading">
+                      Työpaikat ({jobs.length})
+                    </h2>
+                    <p className="section-subtitle">
+                      Klikkaa työpaikan riviä tai &quot;Avaa&quot;-painiketta tarkastellaksesi kaikkia tietoja.
+                    </p>
+                  </div>
 
-                  {/* Reuse the same status names as the editing form. */}
-                  {Object.entries(statusLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <div className="header-actions">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => refreshJobs()}
+                      disabled={isBusy}
+                    >
+                      {isBusy ? 'Päivitetään…' : '🔄 Päivitä lista'}
+                    </button>
 
-              <label>
-                Järjestys
-                <select
-                  value={filters.sort}
-                  onChange={(event) => refreshJobs({
-                    ...filters,
-                    sort: event.target.value,
-                  })}
-                  disabled={isBusy}
-                >
-                  <option value="newest">Uusimmat ensin</option>
-                  <option value="priority">Prioriteetti: korkea ensin</option>
-                </select>
-              </label>
-            </div>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={() => setActiveTab('new')}
+                    >
+                      ➕ Lisää työpaikka
+                    </button>
+                  </div>
+                </div>
 
-            {/* Editing and deletion still use the existing handlers. */}
-            <JobList
-              jobs={jobs}
-              onEdit={startEditing}
-              onDelete={deleteJob}
-              isBusy={isBusy}
-            />
-          </section>
+                <div className="job-filters-bar">
+                  <div className="filter-item">
+                    <label htmlFor="filter-status">Hakemuksen tila</label>
+                    <select
+                      id="filter-status"
+                      value={filters.status}
+                      onChange={(event) => refreshJobs({
+                        ...filters,
+                        status: event.target.value,
+                      })}
+                      disabled={isBusy}
+                    >
+                      <option value="">Kaikki tilat</option>
+                      {Object.entries(statusLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="filter-item">
+                    <label htmlFor="filter-sort">Järjestys</label>
+                    <select
+                      id="filter-sort"
+                      value={filters.sort}
+                      onChange={(event) => refreshJobs({
+                        ...filters,
+                        sort: event.target.value,
+                      })}
+                      disabled={isBusy}
+                    >
+                      <option value="newest">Uusimmat ensin</option>
+                      <option value="priority">Prioriteetti: korkea ensin</option>
+                    </select>
+                  </div>
+                </div>
+
+                <JobList
+                  jobs={jobs}
+                  onEdit={startEditing}
+                  onDelete={deleteJob}
+                  isBusy={isBusy}
+                />
+              </section>
+            )}
+
+            {/* View 2: Job form for adding or editing */}
+            {(activeTab === 'new' || editingJob) && (
+              <div className="form-view-container">
+                <div className="view-header">
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={cancelEditing}
+                  >
+                    ← Takaisin työpaikkalistaan
+                  </button>
+                </div>
+
+                <JobForm
+                  key={editingJob?.id ?? 'new'}
+                  job={editingJob}
+                  onSave={saveJob}
+                  onCancel={cancelEditing}
+                  isBusy={isBusy}
+                />
+              </div>
+            )}
+
+            {/* View 3: JSON Import */}
+            {activeTab === 'import' && !editingJob && (
+              <div className="import-view-container">
+                <div className="view-header">
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => setActiveTab('jobs')}
+                  >
+                    ← Takaisin työpaikkalistaan
+                  </button>
+                </div>
+
+                <JobImport
+                  onPreview={previewImport}
+                  onImport={importJobs}
+                  isBusy={isBusy}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
     </main>
