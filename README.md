@@ -513,16 +513,3 @@ Paikalliset tarkistukset eivät vahvista GitLab-pipelinen tilaa. Varmista viimei
 - Julkisen tuotantopalvelimen automaattiset Let's Encrypt HTTPS -sertifikaatit.
 
 ---
-
-## 15. Palautus ja esittely
-
-Palautuksessa toimitetaan opettajalle oman GitLab-repositorion linkki ja varmistetaan, että opettajalla on vähintään **Developer**-oikeudet (*Manage -> Members -> Invite member*).
-
-### Esittelyvideon tarkistuslista (3–5 min):
-1. **Sovelluksen esittely**: Sovelluksen tarkoitus sekä arkkitehtuuri (React, Express, MariaDB, Nginx).
-2. **Käyttäjähallinta**: Käyttäjätilin luonti ja sisäänkirjautuminen osoitteessa `http://localhost`.
-3. **Välilehdet ja CRUD**: Työpaikan lisäys, tietojen muokkaus ja muutoksen tallentuminen, listan suodatus ja prioriteettijärjestys.
-4. **Tietojen katselu**: Riviä klikkaamalla avautuva katselumodaali (linkki ilmoitukseen ja muistiinpanot).
-5. **JSON-tuonti**: Tiedoston valinta, esikatselu, duplikaattien tunnistus ja tallennus.
-6. **Poisto ja uloskirjautuminen**: Työpaikan poistaminen ja uloskirjautuminen.
-7. **Tekninen toiminta**: Docker-konttien näyttäminen (`docker compose ps`) ja testien ajo (`npm test`).
